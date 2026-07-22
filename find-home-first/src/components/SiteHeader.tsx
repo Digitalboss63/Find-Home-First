@@ -16,16 +16,7 @@ export default function SiteHeader() {
         </Link>
 
         <nav aria-label="Primary navigation">
-          <ul className="flex items-center gap-6 text-sm font-medium list-none m-0 p-0">
-            <li>
-              <Link
-                href="/accessibility"
-                className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors"
-              >
-                Accessibility
-              </Link>
-            </li>
-          </ul>
+          {/* Navigation items will be added as platform sections are built */}
         </nav>
       </div>
     </header>

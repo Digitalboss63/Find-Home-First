@@ -5,7 +5,6 @@ import "./globals.css";
 import SkipLink from "@/components/SkipLink";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
-import AccessibilityWidgetEmbed from "@/components/AccessibilityWidgetEmbed";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,7 +42,6 @@ export default function RootLayout({
           {children}
         </main>
         <SiteFooter />
-        <AccessibilityWidgetEmbed />
       </body>
     </html>
   );
