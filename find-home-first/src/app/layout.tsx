@@ -1,3 +1,7 @@
+/**
+ * Root layout — structural shell only.
+ * Visual design (sidebar, colors, fonts, spacing) is REPLIT-UI ownership.
+ */
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -33,12 +37,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
       <body className="min-h-full flex flex-col">
         <SkipLink />
         <SiteHeader />
-        <main id="main-content" className="flex flex-col flex-1" tabIndex={-1}>
+        <main id="main-content" className="flex-1" tabIndex={-1}>
           {children}
         </main>
         <SiteFooter />

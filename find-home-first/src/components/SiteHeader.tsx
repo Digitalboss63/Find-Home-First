@@ -1,24 +1,33 @@
+/**
+ * SiteHeader — structural landmark only.
+ * Visual design (colors, layout, sidebar, mobile nav) is REPLIT-UI ownership.
+ */
 import Link from "next/link";
+
+const NAV_ITEMS = [
+  { href: "/", label: "Home" },
+  { href: "/projects", label: "Projects" },
+  { href: "/housing-search", label: "Housing Search" },
+  { href: "/people", label: "People & Contacts" },
+  { href: "/tasks", label: "Tasks" },
+  { href: "/plan", label: "Plan & Billing" },
+];
 
 export default function SiteHeader() {
   return (
-    <header
-      role="banner"
-      className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950"
-    >
-      <div className="mx-auto max-w-5xl flex items-center justify-between px-6 py-4">
-        <Link
-          href="/"
-          className="text-lg font-semibold tracking-tight text-[--brand-primary] dark:text-blue-300"
-          aria-label="Find Home First — home"
-        >
-          Find Home First
-        </Link>
-
-        <nav aria-label="Primary navigation">
-          {/* Navigation items will be added as platform sections are built */}
-        </nav>
-      </div>
+    <header role="banner">
+      <Link href="/" aria-label="Find Home First — home">
+        Find Home First
+      </Link>
+      <nav aria-label="Primary navigation">
+        <ul>
+          {NAV_ITEMS.map(({ href, label }) => (
+            <li key={href}>
+              <Link href={href}>{label}</Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
     </header>
   );
 }
