@@ -1,94 +1,245 @@
 /**
  * / — Home workspace
  *
- * Structure only. Visual design is REPLIT-UI ownership.
- *
- * Required content per GUIDED_WORKSPACE_UI_SPEC.md:
- * - One primary next action (derived from active project with blocker, or highest-priority task)
- * - Blocker alert (conditional — only shown when a blocker exists)
- * - Five-stage placement journey summary
- * - Active projects list
- * - Today's tasks list
+ * The guided starting point for each session.
+ * One primary action, blocker alert (conditional), journey summary,
+ * active projects, and today's tasks.
  */
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DEMO_PROJECTS, DEMO_TASKS, STAGES } from "@/demo/data";
+import StageJourney from "@/components/StageJourney";
+import BlockerAlert from "@/components/BlockerAlert";
+import DemoNotice from "@/components/DemoNotice";
 
 export const metadata: Metadata = {
   title: "Home",
   description: "Your guided housing placement workspace.",
 };
 
+function getStageLabelForKey(key: string) {
+  return STAGES.find((s) => s.key === key)?.label ?? key;
+}
+
 export default function HomePage() {
   const activeProjects = DEMO_PROJECTS.filter((p) => p.status === "active");
   const blockedProject = activeProjects.find((p) => p.blocker);
+  const primaryProject = blockedProject ?? activeProjects[0];
   const todayTasks = DEMO_TASKS.filter((t) => t.status === "today");
 
   return (
-    <div>
-      {/* Primary next action */}
-      <section aria-labelledby="primary-action-heading">
-        <h1 id="primary-action-heading">Follow up on the Eastside lease signature</h1>
+    <div className="max-w-3xl mx-auto px-6 py-8 lg:px-10">
+      <DemoNotice />
 
-        {/* Blocker alert — only rendered when a blocker exists */}
-        {blockedProject?.blocker && (
-          <div role="alert" aria-live="polite">
-            <p>Blocker: {blockedProject.blocker}</p>
+      {/* ── Primary action ──────────────────────────────────────────── */}
+      <section aria-labelledby="primary-action-heading" className="mb-10">
+        <div
+          className="rounded-xl px-6 py-6"
+          style={{ backgroundColor: "var(--color-highlight)" }}
+        >
+          <p
+            className="text-xs font-semibold tracking-widest uppercase mb-2"
+            style={{ color: "var(--color-primary)", opacity: 0.7 }}
+          >
+            Your next action
+          </p>
+          <h1
+            id="primary-action-heading"
+            className="text-2xl font-bold leading-snug mb-4"
+            style={{ color: "var(--color-primary)" }}
+          >
+            Follow up on the Eastside lease signature
+          </h1>
+
+          {blockedProject?.blocker && (
+            <div className="mb-5">
+              <BlockerAlert blocker={blockedProject.blocker} />
+            </div>
+          )}
+
+          <Link
+            href={`/projects/${primaryProject?.id ?? "proj-001"}`}
+            className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
+            style={{ backgroundColor: "var(--color-action)" }}
+          >
+            Open project
+            <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </section>
+
+      {/* ── Placement journey ───────────────────────────────────────── */}
+      {primaryProject && (
+        <section aria-labelledby="journey-heading" className="mb-10">
+          <div className="flex items-baseline justify-between mb-4">
+            <h2
+              id="journey-heading"
+              className="text-base font-semibold"
+              style={{ color: "var(--color-primary)" }}
+            >
+              Placement Journey
+            </h2>
+            <span
+              className="text-xs"
+              style={{ color: "var(--color-text)", opacity: 0.55 }}
+            >
+              {primaryProject.name}
+            </span>
           </div>
-        )}
+          <div
+            className="rounded-xl px-6 py-6"
+            style={{
+              backgroundColor: "var(--color-surface-soft)",
+              border: "1px solid var(--color-border)",
+            }}
+          >
+            <StageJourney currentStage={primaryProject.currentStage} />
+          </div>
+        </section>
+      )}
 
-        <Link href={`/projects/${blockedProject?.id ?? "proj-001"}`}>
-          Open project
-        </Link>
-      </section>
+      {/* ── Active projects ─────────────────────────────────────────── */}
+      <section aria-labelledby="active-projects-heading" className="mb-10">
+        <div className="flex items-baseline justify-between mb-4">
+          <h2
+            id="active-projects-heading"
+            className="text-base font-semibold"
+            style={{ color: "var(--color-primary)" }}
+          >
+            Active Projects
+          </h2>
+          <Link
+            href="/projects"
+            className="text-xs font-medium"
+            style={{ color: "var(--color-secondary)" }}
+          >
+            View all projects →
+          </Link>
+        </div>
 
-      {/* Placement journey — five stages */}
-      <section aria-labelledby="journey-heading">
-        <h2 id="journey-heading">Placement Journey</h2>
-        <ol aria-label="Five placement stages">
-          {STAGES.map((stage) => (
-            <li key={stage.key}>
-              <strong>{stage.label}</strong>: {stage.description}
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      {/* Active projects */}
-      <section aria-labelledby="active-projects-heading">
-        <h2 id="active-projects-heading">Active Projects</h2>
-        <Link href="/projects">View all projects</Link>
         {activeProjects.length === 0 ? (
-          <p>No active projects.</p>
+          <p className="text-sm" style={{ color: "var(--color-text)", opacity: 0.6 }}>
+            No active projects.
+          </p>
         ) : (
-          <ul>
-            {activeProjects.map((project) => (
+          <ul className="space-y-2">
+            {activeProjects.slice(0, 5).map((project) => (
               <li key={project.id}>
-                <Link href={`/projects/${project.id}`}>
-                  {project.name}
+                <Link
+                  href={`/projects/${project.id}`}
+                  className="project-link flex items-start justify-between gap-4 rounded-lg px-4 py-3.5 group"
+                  style={{
+                    backgroundColor: "var(--color-surface-soft)",
+                    border: "1px solid var(--color-border)",
+                    display: "flex",
+                  }}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className="font-semibold text-sm leading-snug group-hover:underline"
+                        style={{ color: "var(--color-primary)" }}
+                      >
+                        {project.name}
+                      </span>
+                      {project.blocker && (
+                        <span
+                          aria-label="Has blocker"
+                          className="text-xs px-1.5 py-0.5 rounded font-medium"
+                          style={{
+                            backgroundColor: "#FEF3C7",
+                            color: "var(--color-action)",
+                          }}
+                        >
+                          ⚠ Blocked
+                        </span>
+                      )}
+                    </div>
+                    <p
+                      className="text-xs mt-0.5"
+                      style={{ color: "var(--color-text)", opacity: 0.65 }}
+                    >
+                      {project.residentName} · {project.community}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span
+                      className="text-xs font-medium px-2 py-1 rounded-full"
+                      style={{
+                        backgroundColor: "#fff",
+                        color: "var(--color-secondary)",
+                        border: "1px solid var(--color-border)",
+                      }}
+                    >
+                      {getStageLabelForKey(project.currentStage)}
+                    </span>
+                  </div>
                 </Link>
-                <span> — {project.residentName}</span>
-                <span> — Stage: {project.currentStage}</span>
-                {project.blocker && (
-                  <span role="alert"> ⚠ Blocker: {project.blocker}</span>
-                )}
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      {/* Today's tasks */}
+      {/* ── Today's tasks ───────────────────────────────────────────── */}
       <section aria-labelledby="today-tasks-heading">
-        <h2 id="today-tasks-heading">Today&rsquo;s Tasks</h2>
-        <Link href="/tasks">All tasks</Link>
+        <div className="flex items-baseline justify-between mb-4">
+          <h2
+            id="today-tasks-heading"
+            className="text-base font-semibold"
+            style={{ color: "var(--color-primary)" }}
+          >
+            Today&rsquo;s Tasks
+          </h2>
+          <Link
+            href="/tasks"
+            className="text-xs font-medium"
+            style={{ color: "var(--color-secondary)" }}
+          >
+            All tasks →
+          </Link>
+        </div>
+
         {todayTasks.length === 0 ? (
-          <p>No tasks due today.</p>
+          <p
+            className="text-sm"
+            style={{ color: "var(--color-text)", opacity: 0.6 }}
+          >
+            No tasks due today.
+          </p>
         ) : (
-          <ul>
+          <ul className="space-y-2">
             {todayTasks.map((task) => (
-              <li key={task.id}>
-                {task.title} — {task.projectName}
+              <li
+                key={task.id}
+                className="flex items-start gap-3 rounded-lg px-4 py-3.5"
+                style={{
+                  backgroundColor: "var(--color-surface-soft)",
+                  border: "1px solid var(--color-border)",
+                }}
+              >
+                {/* Static status indicator */}
+                <span
+                  className="shrink-0 mt-0.5 text-xs font-semibold"
+                  style={{ color: "var(--color-action)" }}
+                  aria-label="Today"
+                >
+                  ● Today
+                </span>
+                <div className="min-w-0">
+                  <p
+                    className="text-sm font-medium leading-snug"
+                    style={{ color: "var(--color-text)" }}
+                  >
+                    {task.title}
+                  </p>
+                  <p
+                    className="text-xs mt-0.5"
+                    style={{ color: "var(--color-text)", opacity: 0.55 }}
+                  >
+                    {task.projectName}
+                  </p>
+                </div>
               </li>
             ))}
           </ul>

@@ -1,27 +1,65 @@
-/*
- * globals.css — accessibility foundations only.
- * Brand tokens, colors, typography scale, spacing, and component styling
- * are REPLIT-UI ownership. Do not add visual design here.
- */
 @import "tailwindcss";
 
-/* ── Skip link ─────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════
+   FIND HOME FIRST — Design System
+   Secure Path Home color palette · Tailwind v4 @theme tokens
+   ──────────────────────────────────────────────────────────────────────
+   60% neutral backgrounds (--color-background, --color-surface-soft)
+   30% blue / teal        (--color-primary, --color-secondary)
+   10% orange / gold      (--color-action, --color-highlight)
+   ══════════════════════════════════════════════════════════════════════ */
+
+@theme inline {
+  /* ── Brand palette ─────────────────────────────────────────────── */
+  --color-primary:         #173F5F;   /* Deep blue  — nav, headings, brand anchors          */
+  --color-secondary:       #2F6F68;   /* Teal       — active stages, progress, secondary CTAs */
+  --color-action:          #B45309;   /* Orange     — primary CTA only                       */
+  --color-action-hover:    #923F07;
+  --color-action-active:   #72300A;
+  --color-highlight:       #F2C14E;   /* Gold       — attention indicators; use on dark bg   */
+  --color-background:      #F7F5EF;   /* Warm ivory — primary page background                */
+  --color-surface-soft:    #E8F1EE;   /* Pale teal  — supporting sections, inset panels      */
+  --color-text:            #1F2933;   /* Charcoal   — body text                              */
+  --color-text-muted:      #5C6773;   /* Medium grey — secondary labels, muted status text   */
+  --color-border:          #CBD5D8;   /* Cool grey  — dividers, input borders, card edges    */
+  --color-error:           #B42318;   /* Red        — validation errors only                 */
+
+  /* ── Typography ─────────────────────────────────────────────────── */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ── Base styles ─────────────────────────────────────────────────── */
+html {
+  font-family: var(--font-sans), system-ui, Arial, sans-serif;
+}
+body {
+  background-color: var(--color-background);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Skip link (WCAG 2.4.1) ─────────────────────────────────────── */
 .skip-link {
   position: absolute;
   top: -9999px;
   left: 0;
   z-index: 9999;
   padding: 0.75rem 1.5rem;
-  background: #000;
+  background: var(--color-primary);
   color: #fff;
   font-weight: 600;
   text-decoration: none;
+  border-radius: 0 0 0.375rem 0;
 }
 .skip-link:focus {
   top: 0;
+  outline: 3px solid var(--color-highlight);
+  outline-offset: 2px;
 }
 
-/* ── Screen-reader only ────────────────────────────────────────────────────── */
+/* ── Screen-reader only ─────────────────────────────────────────── */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -34,17 +72,16 @@
   border: 0;
 }
 
-/* ── Focus-visible ring ────────────────────────────────────────────────────── */
+/* ── Focus-visible ring (WCAG 2.4.7 / 2.4.11) ──────────────────── */
 :focus-visible {
-  outline: 3px solid #000;
+  outline: 2px solid var(--color-primary);
   outline-offset: 3px;
+  border-radius: 3px;
 }
 
-/* ── Reduced motion ────────────────────────────────────────────────────────── */
+/* ── Reduced motion (WCAG 2.3.3) ────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

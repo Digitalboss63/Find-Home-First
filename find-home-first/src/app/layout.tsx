@@ -1,14 +1,12 @@
 /**
- * Root layout — structural shell only.
- * Visual design (sidebar, colors, fonts, spacing) is REPLIT-UI ownership.
+ * Root layout — application shell.
+ * Brand tokens and visual design applied by AppShell and globals.css.
  */
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
 import SkipLink from "@/components/SkipLink";
-import SiteHeader from "@/components/SiteHeader";
-import SiteFooter from "@/components/SiteFooter";
+import AppShell from "@/components/AppShell";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,15 +35,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full`}
+      className={`${geistSans.variable} ${geistMono.variable}`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-screen">
         <SkipLink />
-        <SiteHeader />
-        <main id="main-content" className="flex-1" tabIndex={-1}>
-          {children}
-        </main>
-        <SiteFooter />
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
