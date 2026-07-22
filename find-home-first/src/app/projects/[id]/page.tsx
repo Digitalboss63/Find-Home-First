@@ -1,7 +1,8 @@
 /**
  * /projects/[id] — Project workspace
  *
- * Structure only. Visual design is REPLIT-UI ownership.
+ * Data source: PostgreSQL via repository when DATABASE_URL is set,
+ * otherwise falls back to src/demo/data.ts.
  *
  * Required content per GUIDED_WORKSPACE_UI_SPEC.md:
  * - Project name, community, resident, target move-in
@@ -14,31 +15,92 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { DEMO_PROJECTS, DEMO_TASKS, STAGES } from "@/demo/data";
+import { DEMO_PROJECTS, DEMO_TASKS } from "@/demo/data";
+import { getProjectById, listTasksForProject } from "@/lib/repository";
+import { STAGES } from "@/lib/stages";
 
 interface Props {
   params: Promise<{ id: string }>;
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { id } = await params;
-  const project = DEMO_PROJECTS.find((p) => p.id === id);
-  return { title: project?.name ?? "Project Not Found" };
+// ── Demo adapters ──────────────────────────────────────────────────────────────
+
+function demoProjectView(id: string) {
+  const p = DEMO_PROJECTS.find((p) => p.id === id);
+  if (!p) return null;
+  return {
+    id: p.id,
+    name: p.name,
+    community: p.community,
+    currentStage: p.currentStage as string,
+    targetMoveIn: p.targetMoveIn as string | null,
+    blocker: p.blocker ?? null,
+    residentName: p.residentName as string | null,
+  };
 }
 
-export async function generateStaticParams() {
-  return DEMO_PROJECTS.map((p) => ({ id: p.id }));
+function demoTaskViews(projectId: string) {
+  return DEMO_TASKS.filter((t) => t.projectId === projectId).map((t) => ({
+    id: t.id,
+    title: t.title,
+    dueDate: t.dueDate as string | null,
+    status: t.status,
+  }));
 }
+
+// ── Metadata ──────────────────────────────────────────────────────────────────
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params;
+
+  // Try DB first, fall back to demo
+  const dbProject = await getProjectById(id);
+  if (dbProject) return { title: dbProject.name };
+
+  const demo = DEMO_PROJECTS.find((p) => p.id === id);
+  return { title: demo?.name ?? "Project Not Found" };
+}
+
+// No generateStaticParams — dynamic rendering required for DB-backed pages.
+export const dynamic = "force-dynamic";
+
+// ── Page ───────────────────────────────────────────────────────────────────────
 
 export default async function ProjectPage({ params }: Props) {
   const { id } = await params;
-  const project = DEMO_PROJECTS.find((p) => p.id === id);
+
+  // Attempt DB lookup
+  const dbProject = await getProjectById(id);
+  const dbTasks = dbProject ? await listTasksForProject(id) : null;
+
+  const usingDemo = dbProject === null;
+
+  const project = usingDemo ? demoProjectView(id) : {
+    id: dbProject.id,
+    name: dbProject.name,
+    community: dbProject.community,
+    currentStage: dbProject.currentStage,
+    targetMoveIn: dbProject.targetMoveIn,
+    blocker: dbProject.blocker,
+    residentName: dbProject.residentName,
+  };
+
   if (!project) notFound();
 
-  const currentStageIndex = STAGES.findIndex((s) => s.key === project.currentStage);
-  const projectTasks = DEMO_TASKS.filter((t) => t.projectId === project.id);
-  const openTasks = projectTasks.filter((t) => t.status !== "completed");
-  const completedTasks = projectTasks.filter((t) => t.status === "completed");
+  const allTasks = usingDemo
+    ? demoTaskViews(id)
+    : (dbTasks ?? []).map((t) => ({
+        id: t.id,
+        title: t.title,
+        dueDate: t.dueDate,
+        status: t.status,
+      }));
+
+  const currentStageIndex = STAGES.findIndex(
+    (s) => s.key === project.currentStage
+  );
+  const openTasks = allTasks.filter((t) => t.status !== "completed");
+  const completedTasks = allTasks.filter((t) => t.status === "completed");
 
   return (
     <div>
@@ -46,9 +108,8 @@ export default async function ProjectPage({ params }: Props) {
 
       <h1>{project.name}</h1>
       <p>Community: {project.community}</p>
-      <p>Resident: {project.residentName}</p>
-      <p>Target move-in: {project.targetMoveIn}</p>
-      <p>Status: {project.status}</p>
+      {project.residentName && <p>Resident: {project.residentName}</p>}
+      {project.targetMoveIn && <p>Target move-in: {project.targetMoveIn}</p>}
 
       {/* Blocker alert — conditional */}
       {project.blocker && (
@@ -65,10 +126,7 @@ export default async function ProjectPage({ params }: Props) {
             const done = i < currentStageIndex;
             const active = i === currentStageIndex;
             return (
-              <li
-                key={stage.key}
-                aria-current={active ? "step" : undefined}
-              >
+              <li key={stage.key} aria-current={active ? "step" : undefined}>
                 <strong>{stage.label}</strong>
                 {done && " (completed)"}
                 {active && " (current)"}

@@ -1,20 +1,22 @@
 /**
  * /projects — All housing placement projects, grouped by status.
  * Primary action (New Project) deferred until auth exists.
+ *
+ * Data source: PostgreSQL via repository when DATABASE_URL is set,
+ * otherwise falls back to src/demo/data.ts.
  */
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DEMO_PROJECTS, STAGES } from "@/demo/data";
+import { DEMO_PROJECTS } from "@/demo/data";
+import { listProjects } from "@/lib/repository";
+import type { ProjectView } from "@/lib/repository";
+import { getStageLabelForKey } from "@/lib/stages";
 import DemoNotice from "@/components/DemoNotice";
 
 export const metadata: Metadata = {
   title: "Projects",
   description: "All housing placement projects.",
 };
-
-function getStageLabelForKey(key: string) {
-  return STAGES.find((s) => s.key === key)?.label ?? key;
-}
 
 function formatDate(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("en-US", {
@@ -24,7 +26,7 @@ function formatDate(iso: string) {
   });
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ groupStatus }: { groupStatus: string }) {
   const styles: Record<string, React.CSSProperties> = {
     active: { backgroundColor: "#DCFCE7", color: "#166534" },
     "on-hold": { backgroundColor: "#FEF9C3", color: "#854D0E" },
@@ -32,24 +34,39 @@ function StatusBadge({ status }: { status: string }) {
       backgroundColor: "var(--color-surface-soft)",
       color: "var(--color-secondary)",
     },
+    closed: {
+      backgroundColor: "#FEE2E2",
+      color: "#991B1B",
+    },
   };
   const labels: Record<string, string> = {
     active: "Active",
     "on-hold": "On Hold",
     completed: "Completed",
+    closed: "Closed",
   };
-
   return (
     <span
       className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full"
-      style={styles[status] ?? styles.active}
+      style={styles[groupStatus] ?? styles.active}
     >
-      {labels[status] ?? status}
+      {labels[groupStatus] ?? groupStatus}
     </span>
   );
 }
 
-function ProjectRow({ project }: { project: (typeof DEMO_PROJECTS)[0] }) {
+interface RowProject {
+  id: string;
+  name: string;
+  community: string;
+  currentStage: string;
+  groupStatus: string;
+  blocker: string | null;
+  residentName: string | null;
+  targetMoveIn: string | null;
+}
+
+function ProjectRow({ project }: { project: RowProject }) {
   return (
     <li>
       <Link
@@ -83,14 +100,16 @@ function ProjectRow({ project }: { project: (typeof DEMO_PROJECTS)[0] }) {
             className="flex flex-wrap gap-x-4 gap-y-1 text-xs"
             style={{ color: "var(--color-text)", opacity: 0.65 }}
           >
-            <span>{project.residentName}</span>
+            {project.residentName && <span>{project.residentName}</span>}
             <span>{project.community}</span>
-            <span>
-              Move-in:{" "}
-              <time dateTime={project.targetMoveIn}>
-                {formatDate(project.targetMoveIn)}
-              </time>
-            </span>
+            {project.targetMoveIn && (
+              <span>
+                Move-in:{" "}
+                <time dateTime={project.targetMoveIn}>
+                  {formatDate(project.targetMoveIn)}
+                </time>
+              </span>
+            )}
           </div>
           {project.blocker && (
             <p
@@ -107,7 +126,7 @@ function ProjectRow({ project }: { project: (typeof DEMO_PROJECTS)[0] }) {
 
         {/* Right: badges */}
         <div className="shrink-0 flex flex-col items-end gap-2">
-          <StatusBadge status={project.status} />
+          <StatusBadge groupStatus={project.groupStatus} />
           <span
             className="text-xs font-medium px-2 py-0.5 rounded"
             style={{
@@ -124,16 +143,52 @@ function ProjectRow({ project }: { project: (typeof DEMO_PROJECTS)[0] }) {
   );
 }
 
-export default function ProjectsPage() {
-  const active = DEMO_PROJECTS.filter((p) => p.status === "active");
-  const onHold = DEMO_PROJECTS.filter((p) => p.status === "on-hold");
-  const completed = DEMO_PROJECTS.filter((p) => p.status === "completed");
+// ── Demo adapter ──────────────────────────────────────────────────────────────
+
+function demoToRowProjects(): RowProject[] {
+  return DEMO_PROJECTS.map((p) => ({
+    id: p.id,
+    name: p.name,
+    community: p.community,
+    currentStage: p.currentStage,
+    groupStatus: p.status === "completed" ? "completed" : "active",
+    blocker: p.blocker ?? null,
+    residentName: p.residentName,
+    targetMoveIn: p.targetMoveIn,
+  }));
+}
+
+function dbToRowProject(p: ProjectView): RowProject {
+  return {
+    id: p.id,
+    name: p.name,
+    community: p.community,
+    currentStage: p.currentStage,
+    groupStatus: p.groupStatus,
+    blocker: p.blocker,
+    residentName: p.residentName,
+    targetMoveIn: p.targetMoveIn,
+  };
+}
+
+export default async function ProjectsPage() {
+  const dbProjects = await listProjects();
+  const usingDemo = dbProjects === null;
+
+  const allProjects: RowProject[] = usingDemo
+    ? demoToRowProjects()
+    : dbProjects.map(dbToRowProject);
+
+  const active = allProjects.filter((p) => p.groupStatus === "active");
+  const onHold = allProjects.filter((p) => p.groupStatus === "on-hold");
+  const completed = allProjects.filter((p) => p.groupStatus === "completed");
+  const closed = allProjects.filter((p) => p.groupStatus === "closed");
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 lg:px-10">
       {/* Page header */}
       <div className="mb-8">
-        <DemoNotice />
+        {usingDemo && <DemoNotice />}
         <h1
           className="text-2xl font-bold"
           style={{ color: "var(--color-primary)" }}
@@ -144,7 +199,7 @@ export default function ProjectsPage() {
           className="mt-1 text-sm"
           style={{ color: "var(--color-text)", opacity: 0.6 }}
         >
-          {DEMO_PROJECTS.length} total — {active.length} active
+          {allProjects.length} total — {active.length} active
         </p>
       </div>
 
@@ -202,7 +257,25 @@ export default function ProjectsPage() {
         </section>
       )}
 
-      {DEMO_PROJECTS.length === 0 && (
+      {/* ── Closed ──────────────────────────────────────────────────── */}
+      {closed.length > 0 && (
+        <section aria-labelledby="closed-heading" className="mb-10">
+          <h2
+            id="closed-heading"
+            className="text-xs font-semibold uppercase tracking-widest mb-3"
+            style={{ color: "var(--color-text)", opacity: 0.75 }}
+          >
+            Closed ({closed.length})
+          </h2>
+          <ul className="space-y-2">
+            {closed.map((p) => (
+              <ProjectRow key={p.id} project={p} />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {allProjects.length === 0 && (
         <p className="text-sm" style={{ color: "var(--color-text)", opacity: 0.6 }}>
           No projects yet.
         </p>

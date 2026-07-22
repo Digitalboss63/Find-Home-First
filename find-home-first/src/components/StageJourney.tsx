@@ -6,7 +6,7 @@
  * - aria-current="step" on the active stage
  * - State conveyed via text labels, not color alone
  */
-import { STAGES, type StageKey } from "@/demo/data";
+import { STAGES, type StageKey } from "@/lib/stages";
 
 interface Props {
   currentStage: StageKey;

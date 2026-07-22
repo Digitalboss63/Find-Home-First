@@ -4,10 +4,15 @@
  * The guided starting point for each session.
  * One primary action, blocker alert (conditional), journey summary,
  * active projects, and today's tasks.
+ *
+ * Data source: PostgreSQL via repository when DATABASE_URL is set,
+ * otherwise falls back to src/demo/data.ts.
  */
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DEMO_PROJECTS, DEMO_TASKS, STAGES } from "@/demo/data";
+import { DEMO_PROJECTS, DEMO_TASKS } from "@/demo/data";
+import { listActiveProjects, listTasks } from "@/lib/repository";
+import { getStageLabelForKey } from "@/lib/stages";
 import StageJourney from "@/components/StageJourney";
 import BlockerAlert from "@/components/BlockerAlert";
 import DemoNotice from "@/components/DemoNotice";
@@ -17,19 +22,67 @@ export const metadata: Metadata = {
   description: "Your guided housing placement workspace.",
 };
 
-function getStageLabelForKey(key: string) {
-  return STAGES.find((s) => s.key === key)?.label ?? key;
+// ── Demo adapters ──────────────────────────────────────────────────────────────
+
+function demoProjectsAsViews() {
+  return DEMO_PROJECTS.map((p) => ({
+    id: p.id,
+    name: p.name,
+    community: p.community,
+    currentStage: p.currentStage as string,
+    blocker: p.blocker ?? null,
+    residentName: p.residentName,
+    groupStatus:
+      p.status === "completed"
+        ? ("completed" as const)
+        : ("active" as const),
+  }));
 }
 
-export default function HomePage() {
-  const activeProjects = DEMO_PROJECTS.filter((p) => p.status === "active");
+function demoTasksAsViews() {
+  return DEMO_TASKS.map((t) => ({
+    id: t.id,
+    title: t.title,
+    projectName: t.projectName,
+    status: t.status,
+  }));
+}
+
+export default async function HomePage() {
+  // ── Fetch data — fall back to demo on failure ──────────────────────────────
+  const dbActiveProjects = await listActiveProjects();
+  const dbTasks = await listTasks();
+
+  const usingDemo = dbActiveProjects === null || dbTasks === null;
+
+  const activeProjects = usingDemo
+    ? demoProjectsAsViews().filter((p) => p.groupStatus === "active")
+    : dbActiveProjects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        community: p.community,
+        currentStage: p.currentStage,
+        blocker: p.blocker,
+        residentName: p.residentName,
+        groupStatus: p.groupStatus,
+      }));
+
+  const allTasks = usingDemo
+    ? demoTasksAsViews()
+    : (dbTasks ?? []).map((t) => ({
+        id: t.id,
+        title: t.title,
+        projectName: t.projectName,
+        status: t.status,
+      }));
+
   const blockedProject = activeProjects.find((p) => p.blocker);
   const primaryProject = blockedProject ?? activeProjects[0];
-  const todayTasks = DEMO_TASKS.filter((t) => t.status === "today");
+  const todayTasks = allTasks.filter((t) => t.status === "today");
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 lg:px-10">
-      <DemoNotice />
+      {usingDemo && <DemoNotice />}
 
       {/* ── Primary action ──────────────────────────────────────────── */}
       <section aria-labelledby="primary-action-heading" className="mb-10">
@@ -48,23 +101,29 @@ export default function HomePage() {
             className="text-2xl font-bold leading-snug mb-4"
             style={{ color: "var(--color-primary)" }}
           >
-            Follow up on the Eastside lease signature
+            {primaryProject?.blocker
+              ? primaryProject.name
+              : primaryProject
+              ? `Continue: ${primaryProject.name}`
+              : "No active projects"}
           </h1>
 
-          {blockedProject?.blocker && (
+          {primaryProject?.blocker && (
             <div className="mb-5">
-              <BlockerAlert blocker={blockedProject.blocker} />
+              <BlockerAlert blocker={primaryProject.blocker} />
             </div>
           )}
 
-          <Link
-            href={`/projects/${primaryProject?.id ?? "proj-001"}`}
-            className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
-            style={{ backgroundColor: "var(--color-action)" }}
-          >
-            Open project
-            <span aria-hidden="true">→</span>
-          </Link>
+          {primaryProject && (
+            <Link
+              href={`/projects/${primaryProject.id}`}
+              className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
+              style={{ backgroundColor: "var(--color-action)" }}
+            >
+              Open project
+              <span aria-hidden="true">→</span>
+            </Link>
+          )}
         </div>
       </section>
 
@@ -93,7 +152,13 @@ export default function HomePage() {
               border: "1px solid var(--color-border)",
             }}
           >
-            <StageJourney currentStage={primaryProject.currentStage} />
+            <StageJourney
+              currentStage={
+                primaryProject.currentStage as Parameters<
+                  typeof StageJourney
+                >[0]["currentStage"]
+              }
+            />
           </div>
         </section>
       )}
@@ -218,7 +283,6 @@ export default function HomePage() {
                   border: "1px solid var(--color-border)",
                 }}
               >
-                {/* Static status indicator */}
                 <span
                   className="shrink-0 mt-0.5 text-xs font-semibold"
                   style={{ color: "var(--color-action)" }}
