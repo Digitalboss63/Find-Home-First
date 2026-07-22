@@ -15,6 +15,9 @@ import {
   residents,
   propertyCandidates,
 } from "@/db/schema";
+
+// alias for self-join
+const referralContacts = contacts;
 import { statusToStageKey } from "./stages";
 
 // ─── Shared view types (safe to import anywhere) ──────────────────────────────
@@ -67,6 +70,8 @@ export interface ResidentView {
   notes: string | null;
   placementStatus: string;
   referralContactId: string | null;
+  /** Resolved name of the referral contact, if one is linked. */
+  referredByName: string | null;
 }
 
 export interface PropertyCandidateView {
@@ -297,11 +302,27 @@ export async function listResidents(): Promise<ResidentView[] | null> {
         notes: residents.notes,
         placementStatus: residents.placementStatus,
         referralContactId: residents.referralContactId,
+        referredByName: referralContacts.name,
       })
       .from(residents)
+      .leftJoin(
+        referralContacts,
+        eq(residents.referralContactId, referralContacts.id)
+      )
       .orderBy(residents.displayName);
 
-    return rows;
+    return rows.map((r) => ({
+      id: r.id,
+      displayName: r.displayName,
+      householdSize: r.householdSize,
+      bedroomsNeeded: r.bedroomsNeeded,
+      accessibilityNeeds: r.accessibilityNeeds,
+      incomeRange: r.incomeRange,
+      notes: r.notes,
+      placementStatus: r.placementStatus,
+      referralContactId: r.referralContactId,
+      referredByName: r.referredByName ?? null,
+    }));
   } catch {
     console.warn("[find-home-first] listResidents query failed. Falling back to demo data.");
     return null;

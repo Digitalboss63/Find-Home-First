@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
-import { DEMO_PROPERTIES } from "@/demo/data";
 import DemoNotice from "@/components/DemoNotice";
+import type { PropertyItemView } from "@/lib/types";
 
 // ─── Community imagery ────────────────────────────────────────────────────────
 // Images stored in public/images/. Source: Unsplash (free license).
@@ -28,14 +28,6 @@ const COMMUNITY_IMAGES: Record<string, { src: string; alt: string }> = {
   },
 };
 
-const COMMUNITIES = [
-  "All Communities",
-  "Eastside",
-  "Northview",
-  "Downtown",
-  "Westpark",
-];
-
 const BEDROOM_OPTIONS = [
   { value: "", label: "Any" },
   { value: "0", label: "Studio / SRO" },
@@ -53,6 +45,7 @@ function formatCurrency(amount: number) {
 }
 
 function formatDate(iso: string) {
+  if (!iso) return "—";
   return new Date(iso + "T00:00:00").toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -79,14 +72,28 @@ const labelStyle: React.CSSProperties = {
   opacity: 0.65,
 };
 
-export default function HousingSearchClient() {
+interface Props {
+  properties: PropertyItemView[];
+  usingDemo: boolean;
+}
+
+export default function HousingSearchClient({ properties, usingDemo }: Props) {
+  // Derive the community filter options from actual data
+  const communities = useMemo(() => {
+    const seen = new Set<string>();
+    for (const p of properties) {
+      if (p.community) seen.add(p.community);
+    }
+    return ["All Communities", ...Array.from(seen).sort()];
+  }, [properties]);
+
   const [community, setCommunity] = useState("All Communities");
   const [bedrooms, setBedrooms] = useState("");
   const [maxRent, setMaxRent] = useState("");
   const [availableBy, setAvailableBy] = useState("");
 
   const filtered = useMemo(() => {
-    return DEMO_PROPERTIES.filter((p) => {
+    return properties.filter((p) => {
       if (community !== "All Communities" && p.community !== community)
         return false;
       if (bedrooms !== "") {
@@ -101,7 +108,7 @@ export default function HousingSearchClient() {
       if (availableBy !== "" && p.availableDate > availableBy) return false;
       return true;
     });
-  }, [community, bedrooms, maxRent, availableBy]);
+  }, [properties, community, bedrooms, maxRent, availableBy]);
 
   const hasActiveFilters =
     community !== "All Communities" ||
@@ -116,11 +123,14 @@ export default function HousingSearchClient() {
     setAvailableBy("");
   }
 
+  const demoMessage =
+    "Demonstration data — RentCast and Zillow integrations are future phases.";
+
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 lg:px-10">
       {/* Page header */}
       <div className="mb-6">
-        <DemoNotice message="Demonstration data — RentCast and Zillow integrations are future phases." />
+        {usingDemo && <DemoNotice message={demoMessage} />}
         <h1
           className="text-2xl font-bold"
           style={{ color: "var(--color-primary)" }}
@@ -170,7 +180,7 @@ export default function HousingSearchClient() {
                   onChange={(e) => setCommunity(e.target.value)}
                   style={fieldStyle}
                 >
-                  {COMMUNITIES.map((c) => (
+                  {communities.map((c) => (
                     <option key={c} value={c}>
                       {c}
                     </option>
@@ -252,7 +262,7 @@ export default function HousingSearchClient() {
                   className="text-xs"
                   style={{ color: "var(--color-secondary)" }}
                 >
-                  {filtered.length} of {DEMO_PROPERTIES.length} units shown
+                  {filtered.length} of {properties.length} units shown
                 </span>
               )}
             </div>
@@ -318,7 +328,7 @@ export default function HousingSearchClient() {
                   }}
                 >
                   <div className="flex flex-col sm:flex-row">
-                    {/* Community image — contextual neighborhood character */}
+                    {/* Community image — contextual neighbourhood character */}
                     {img && (
                       <div className="sm:w-36 shrink-0 relative overflow-hidden h-40 sm:h-auto">
                         <Image
@@ -353,13 +363,17 @@ export default function HousingSearchClient() {
                           className="font-bold text-base shrink-0"
                           style={{ color: "var(--color-primary)" }}
                         >
-                          {formatCurrency(unit.monthlyRent)}
-                          <span
-                            className="font-normal text-xs ml-1"
-                            style={{ opacity: 0.6 }}
-                          >
-                            /mo
-                          </span>
+                          {unit.monthlyRent > 0
+                            ? formatCurrency(unit.monthlyRent)
+                            : "—"}
+                          {unit.monthlyRent > 0 && (
+                            <span
+                              className="font-normal text-xs ml-1"
+                              style={{ opacity: 0.6 }}
+                            >
+                              /mo
+                            </span>
+                          )}
                         </p>
                       </div>
 
@@ -383,19 +397,25 @@ export default function HousingSearchClient() {
                           >
                             Available
                           </span>
-                          <time dateTime={unit.availableDate}>
-                            {formatDate(unit.availableDate)}
-                          </time>
+                          {unit.availableDate ? (
+                            <time dateTime={unit.availableDate}>
+                              {formatDate(unit.availableDate)}
+                            </time>
+                          ) : (
+                            "—"
+                          )}
                         </div>
-                        <div className="col-span-2">
-                          <span
-                            className="block font-semibold mb-0.5"
-                            style={{ opacity: 0.55 }}
-                          >
-                            Landlord contact
-                          </span>
-                          {unit.landlordContact}
-                        </div>
+                        {unit.landlordContact && (
+                          <div className="col-span-2">
+                            <span
+                              className="block font-semibold mb-0.5"
+                              style={{ opacity: 0.55 }}
+                            >
+                              Landlord contact
+                            </span>
+                            {unit.landlordContact}
+                          </div>
+                        )}
                         {unit.notes && (
                           <div className="col-span-2">
                             <span

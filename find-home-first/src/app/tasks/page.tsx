@@ -3,9 +3,15 @@
  *
  * Three sections: Today · Upcoming · Completed
  * Checkbox indicators are visual only in Phase 1 — no interactive completion.
+ *
+ * Data source: PostgreSQL via repository when DATABASE_URL is set,
+ * otherwise falls back to src/demo/data.ts.
  */
 import type { Metadata } from "next";
 import { DEMO_TASKS } from "@/demo/data";
+import { listTasks } from "@/lib/repository";
+import type { TaskView } from "@/lib/repository";
+import DemoNotice from "@/components/DemoNotice";
 
 export const metadata: Metadata = {
   title: "Tasks",
@@ -31,13 +37,15 @@ function statusLabel(status: string): { icon: string; text: string } {
   }
 }
 
-function TaskRow({
-  task,
-  done = false,
-}: {
-  task: (typeof DEMO_TASKS)[0];
-  done?: boolean;
-}) {
+interface TaskRowData {
+  id: string;
+  title: string;
+  projectName: string | null;
+  dueDate: string | null;
+  status: string;
+}
+
+function TaskRow({ task, done = false }: { task: TaskRowData; done?: boolean }) {
   const { icon, text } = statusLabel(task.status);
 
   return (
@@ -80,27 +88,61 @@ function TaskRow({
           className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs"
           style={{ color: "var(--color-text)", opacity: 0.55 }}
         >
-          <span>{task.projectName}</span>
-          <span aria-hidden="true">·</span>
-          <span>
-            Due{" "}
-            <time dateTime={task.dueDate}>{formatDate(task.dueDate)}</time>
-          </span>
+          {task.projectName && <span>{task.projectName}</span>}
+          {task.projectName && task.dueDate && (
+            <span aria-hidden="true">·</span>
+          )}
+          {task.dueDate && (
+            <span>
+              Due{" "}
+              <time dateTime={task.dueDate}>{formatDate(task.dueDate)}</time>
+            </span>
+          )}
         </div>
       </div>
     </li>
   );
 }
 
-export default function TasksPage() {
-  const today = DEMO_TASKS.filter((t) => t.status === "today");
-  const upcoming = DEMO_TASKS.filter((t) => t.status === "upcoming");
-  const completed = DEMO_TASKS.filter((t) => t.status === "completed");
+// ── Demo adapter ──────────────────────────────────────────────────────────────
+
+function demoTaskRows(): TaskRowData[] {
+  return DEMO_TASKS.map((t) => ({
+    id: t.id,
+    title: t.title,
+    projectName: t.projectName,
+    dueDate: t.dueDate,
+    status: t.status,
+  }));
+}
+
+function dbTaskRows(rows: TaskView[]): TaskRowData[] {
+  return rows.map((t) => ({
+    id: t.id,
+    title: t.title,
+    projectName: t.projectName,
+    dueDate: t.dueDate,
+    status: t.status,
+  }));
+}
+
+export default async function TasksPage() {
+  const dbTasks = await listTasks();
+  const usingDemo = dbTasks === null;
+
+  const allTasks: TaskRowData[] = usingDemo
+    ? demoTaskRows()
+    : dbTaskRows(dbTasks);
+
+  const today = allTasks.filter((t) => t.status === "today");
+  const upcoming = allTasks.filter((t) => t.status === "upcoming");
+  const completed = allTasks.filter((t) => t.status === "completed");
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 lg:px-10">
       {/* Page header */}
       <div className="mb-8">
+        {usingDemo && <DemoNotice />}
         <h1
           className="text-2xl font-bold"
           style={{ color: "var(--color-primary)" }}
