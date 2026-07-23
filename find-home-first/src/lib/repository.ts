@@ -1,12 +1,15 @@
 /**
  * Repository — typed data-access layer.
  *
- * Pages must not call Drizzle directly.
- * All functions return null when the DB is unavailable (caller falls back to demo data).
+ * SECURITY: All functions require organizationId from requireOrganization().
+ * Never pass organizationId from client input.
+ *
+ * Demo fallback only in development or DEMO_MODE=true.
+ * Production failures return null — callers must redirect /unavailable.
  *
  * Server-only: never import from client components.
  */
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import {
   projects,
@@ -15,25 +18,31 @@ import {
   residents,
   propertyCandidates,
 } from "@/db/schema";
-
-// alias for self-join
-const referralContacts = contacts;
 import { statusToStageKey } from "./stages";
 
-// ─── Shared view types (safe to import anywhere) ──────────────────────────────
+const referralContacts = contacts;
+
+// ─── Demo safety ─────────────────────────────────────────────────────────────
+
+export function isDemoAllowed(): boolean {
+  return (
+    process.env.NODE_ENV === "development" ||
+    process.env.DEMO_MODE === "true"
+  );
+}
+
+// ─── View types ───────────────────────────────────────────────────────────────
 
 export interface ProjectView {
   id: string;
   name: string;
   community: string;
   currentStatus: string;
-  /** Derived visible stage key */
   currentStage: string;
   targetMoveIn: string | null;
   blocker: string | null;
   blockerReason: string | null;
   residentName: string | null;
-  /** Coarse status for grouping: "active" | "completed" | "closed" */
   groupStatus: "active" | "completed" | "closed";
   createdAt: Date;
 }
@@ -45,7 +54,6 @@ export interface TaskView {
   projectId: string | null;
   projectName: string | null;
   dueDate: string | null;
-  /** "today" | "upcoming" | "completed" */
   status: string;
 }
 
@@ -70,7 +78,6 @@ export interface ResidentView {
   notes: string | null;
   placementStatus: string;
   referralContactId: string | null;
-  /** Resolved name of the referral contact, if one is linked. */
   referredByName: string | null;
 }
 
@@ -88,17 +95,17 @@ export interface PropertyCandidateView {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function deriveGroupStatus(
-  currentStatus: string
-): "active" | "completed" | "closed" {
-  if (currentStatus === "moved_in") return "completed";
-  if (currentStatus === "closed_not_proceeding") return "closed";
+function deriveGroupStatus(s: string): "active" | "completed" | "closed" {
+  if (s === "moved_in") return "completed";
+  if (s === "closed_not_proceeding") return "closed";
   return "active";
 }
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
 
-export async function listProjects(): Promise<ProjectView[] | null> {
+export async function listProjects(
+  organizationId: string
+): Promise<ProjectView[] | null> {
   const db = getDb();
   if (!db) return null;
   try {
@@ -116,6 +123,7 @@ export async function listProjects(): Promise<ProjectView[] | null> {
       })
       .from(projects)
       .leftJoin(residents, eq(projects.residentId, residents.id))
+      .where(eq(projects.organizationId, organizationId))
       .orderBy(projects.createdAt);
 
     return rows.map((r) => ({
@@ -132,19 +140,22 @@ export async function listProjects(): Promise<ProjectView[] | null> {
       createdAt: r.createdAt,
     }));
   } catch {
-    console.warn("[find-home-first] listProjects query failed. Falling back to demo data.");
+    console.warn("[repository] listProjects failed");
     return null;
   }
 }
 
-export async function listActiveProjects(): Promise<ProjectView[] | null> {
-  const all = await listProjects();
+export async function listActiveProjects(
+  organizationId: string
+): Promise<ProjectView[] | null> {
+  const all = await listProjects(organizationId);
   if (!all) return null;
   return all.filter((p) => p.groupStatus === "active");
 }
 
 export async function getProjectById(
-  id: string
+  id: string,
+  organizationId: string
 ): Promise<ProjectView | null> {
   const db = getDb();
   if (!db) return null;
@@ -163,7 +174,7 @@ export async function getProjectById(
       })
       .from(projects)
       .leftJoin(residents, eq(projects.residentId, residents.id))
-      .where(eq(projects.id, id))
+      .where(and(eq(projects.id, id), eq(projects.organizationId, organizationId)))
       .limit(1);
 
     if (rows.length === 0) return null;
@@ -182,48 +193,15 @@ export async function getProjectById(
       createdAt: r.createdAt,
     };
   } catch {
-    console.warn("[find-home-first] getProjectById query failed. Falling back to demo data.");
+    console.warn("[repository] getProjectById failed");
     return null;
   }
 }
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
-export async function listTasks(): Promise<TaskView[] | null> {
-  const db = getDb();
-  if (!db) return null;
-  try {
-    const rows = await db
-      .select({
-        id: tasks.id,
-        title: tasks.title,
-        description: tasks.description,
-        projectId: tasks.projectId,
-        projectName: projects.name,
-        dueDate: tasks.dueDate,
-        status: tasks.status,
-      })
-      .from(tasks)
-      .leftJoin(projects, eq(tasks.projectId, projects.id))
-      .orderBy(tasks.dueDate);
-
-    return rows.map((r) => ({
-      id: r.id,
-      title: r.title,
-      description: r.description,
-      projectId: r.projectId,
-      projectName: r.projectName ?? null,
-      dueDate: r.dueDate,
-      status: r.status,
-    }));
-  } catch {
-    console.warn("[find-home-first] listTasks query failed. Falling back to demo data.");
-    return null;
-  }
-}
-
-export async function listTasksForProject(
-  projectId: string
+export async function listTasks(
+  organizationId: string
 ): Promise<TaskView[] | null> {
   const db = getDb();
   if (!db) return null;
@@ -240,7 +218,7 @@ export async function listTasksForProject(
       })
       .from(tasks)
       .leftJoin(projects, eq(tasks.projectId, projects.id))
-      .where(eq(tasks.projectId, projectId))
+      .where(eq(tasks.organizationId, organizationId))
       .orderBy(tasks.dueDate);
 
     return rows.map((r) => ({
@@ -253,14 +231,53 @@ export async function listTasksForProject(
       status: r.status,
     }));
   } catch {
-    console.warn("[find-home-first] listTasksForProject query failed. Falling back to demo data.");
+    console.warn("[repository] listTasks failed");
+    return null;
+  }
+}
+
+export async function listTasksForProject(
+  projectId: string,
+  organizationId: string
+): Promise<TaskView[] | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    const rows = await db
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        description: tasks.description,
+        projectId: tasks.projectId,
+        projectName: projects.name,
+        dueDate: tasks.dueDate,
+        status: tasks.status,
+      })
+      .from(tasks)
+      .leftJoin(projects, eq(tasks.projectId, projects.id))
+      .where(and(eq(tasks.projectId, projectId), eq(tasks.organizationId, organizationId)))
+      .orderBy(tasks.dueDate);
+
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      description: r.description,
+      projectId: r.projectId,
+      projectName: r.projectName ?? null,
+      dueDate: r.dueDate,
+      status: r.status,
+    }));
+  } catch {
+    console.warn("[repository] listTasksForProject failed");
     return null;
   }
 }
 
 // ─── Contacts ─────────────────────────────────────────────────────────────────
 
-export async function listContacts(): Promise<ContactView[] | null> {
+export async function listContacts(
+  organizationId: string
+): Promise<ContactView[] | null> {
   const db = getDb();
   if (!db) return null;
   try {
@@ -276,18 +293,21 @@ export async function listContacts(): Promise<ContactView[] | null> {
         contactType: contacts.contactType,
       })
       .from(contacts)
+      .where(eq(contacts.organizationId, organizationId))
       .orderBy(contacts.name);
 
     return rows;
   } catch {
-    console.warn("[find-home-first] listContacts query failed. Falling back to demo data.");
+    console.warn("[repository] listContacts failed");
     return null;
   }
 }
 
 // ─── Residents ────────────────────────────────────────────────────────────────
 
-export async function listResidents(): Promise<ResidentView[] | null> {
+export async function listResidents(
+  organizationId: string
+): Promise<ResidentView[] | null> {
   const db = getDb();
   if (!db) return null;
   try {
@@ -305,10 +325,8 @@ export async function listResidents(): Promise<ResidentView[] | null> {
         referredByName: referralContacts.name,
       })
       .from(residents)
-      .leftJoin(
-        referralContacts,
-        eq(residents.referralContactId, referralContacts.id)
-      )
+      .leftJoin(referralContacts, eq(residents.referralContactId, referralContacts.id))
+      .where(eq(residents.organizationId, organizationId))
       .orderBy(residents.displayName);
 
     return rows.map((r) => ({
@@ -324,16 +342,16 @@ export async function listResidents(): Promise<ResidentView[] | null> {
       referredByName: r.referredByName ?? null,
     }));
   } catch {
-    console.warn("[find-home-first] listResidents query failed. Falling back to demo data.");
+    console.warn("[repository] listResidents failed");
     return null;
   }
 }
 
 // ─── Property candidates ──────────────────────────────────────────────────────
 
-export async function listPropertyCandidates(): Promise<
-  PropertyCandidateView[] | null
-> {
+export async function listPropertyCandidates(
+  organizationId: string
+): Promise<PropertyCandidateView[] | null> {
   const db = getDb();
   if (!db) return null;
   try {
@@ -350,6 +368,7 @@ export async function listPropertyCandidates(): Promise<
         sourceUrl: propertyCandidates.sourceUrl,
       })
       .from(propertyCandidates)
+      .where(eq(propertyCandidates.organizationId, organizationId))
       .orderBy(propertyCandidates.createdAt);
 
     return rows.map((r) => ({
@@ -364,7 +383,7 @@ export async function listPropertyCandidates(): Promise<
       sourceUrl: r.sourceUrl,
     }));
   } catch {
-    console.warn("[find-home-first] listPropertyCandidates query failed. Falling back to demo data.");
+    console.warn("[repository] listPropertyCandidates failed");
     return null;
   }
 }

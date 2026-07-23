@@ -8,12 +8,14 @@
  * otherwise falls back to src/demo/data.ts.
  */
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import {
   DEMO_PROSPECTIVE_RESIDENTS,
   DEMO_REFERRAL_CONTACTS,
 } from "@/demo/data";
-import { listContacts, listResidents } from "@/lib/repository";
+import { listContacts, listResidents, isDemoAllowed } from "@/lib/repository";
 import type { ContactView, ResidentView } from "@/lib/repository";
+import { requireOrganization } from "@/lib/auth";
 import DemoNotice from "@/components/DemoNotice";
 
 export const metadata: Metadata = {
@@ -133,20 +135,26 @@ function ResidentStatusBadge({ status }: { status: string }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default async function PeoplePage() {
+  const { organizationId } = await requireOrganization();
+
   const [dbContacts, dbResidents] = await Promise.all([
-    listContacts(),
-    listResidents(),
+    listContacts(organizationId),
+    listResidents(organizationId),
   ]);
 
-  const usingDemo = dbContacts === null || dbResidents === null;
+  const usingDemo = isDemoAllowed() && (dbContacts === null || dbResidents === null);
+
+  if (!usingDemo && (dbContacts === null || dbResidents === null)) {
+    redirect("/unavailable");
+  }
 
   const contactRows: ContactRow[] = usingDemo
     ? demoContactRows()
-    : dbContactRows(dbContacts);
+    : dbContactRows(dbContacts!);
 
   const residentRows: ResidentRow[] = usingDemo
     ? demoResidentRows()
-    : dbResidentRows(dbResidents);
+    : dbResidentRows(dbResidents!);
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 lg:px-10">

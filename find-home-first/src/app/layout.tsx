@@ -1,9 +1,6 @@
-/**
- * Root layout — application shell.
- * Brand tokens and visual design applied by AppShell and globals.css.
- */
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import SkipLink from "@/components/SkipLink";
 import AppShell from "@/components/AppShell";
@@ -33,14 +30,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable}`}
-    >
-      <body className="min-h-screen">
-        <SkipLink />
-        <AppShell>{children}</AppShell>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+        <body className="min-h-screen">
+          <SkipLink />
+          <AppShell>{children}</AppShell>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

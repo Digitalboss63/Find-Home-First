@@ -6,8 +6,10 @@
  * Falls back to demo data when DATABASE_URL is absent or a query fails.
  */
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { DEMO_PROPERTIES } from "@/demo/data";
-import { listPropertyCandidates } from "@/lib/repository";
+import { listPropertyCandidates, isDemoAllowed } from "@/lib/repository";
+import { requireOrganization } from "@/lib/auth";
 import type { PropertyItemView } from "@/lib/types";
 import HousingSearchClient from "./HousingSearchClient";
 
@@ -18,8 +20,13 @@ export const metadata: Metadata = {
 };
 
 export default async function HousingSearchPage() {
-  const dbCandidates = await listPropertyCandidates();
-  const usingDemo = dbCandidates === null;
+  const { organizationId } = await requireOrganization();
+  const dbCandidates = await listPropertyCandidates(organizationId);
+  const usingDemo = isDemoAllowed() && dbCandidates === null;
+
+  if (!usingDemo && dbCandidates === null) {
+    redirect("/unavailable");
+  }
 
   let properties: PropertyItemView[];
 
@@ -37,7 +44,7 @@ export default async function HousingSearchPage() {
     }));
   } else {
     // Normalise DB records — only surface active listings
-    properties = dbCandidates
+    properties = dbCandidates!
       .filter((c) => c.listingStatus === "active")
       .map((c) => ({
         id: c.id,

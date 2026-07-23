@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import UserMenu from "@/components/UserMenu";
 
 // ─── Navigation items ─────────────────────────────────────────────────────────
 
@@ -202,13 +203,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           className="px-5 py-4 shrink-0 border-t"
           style={{ borderColor: "rgba(255,255,255,0.1)" }}
         >
-          <p
-            className="text-[11px] leading-relaxed"
-            style={{ color: "rgba(255,255,255,0.3)" }}
-          >
-            Demonstration environment.<br />
-            All data is fictional.
-          </p>
+          <UserMenu />
         </div>
       </aside>
 
@@ -312,9 +307,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           className="px-5 py-4 shrink-0 border-t"
           style={{ borderColor: "rgba(255,255,255,0.1)" }}
         >
-          <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>
-            Demonstration environment.
-          </p>
+          <UserMenu />
         </div>
       </aside>
     </div>

@@ -272,3 +272,40 @@ export const tasks = pgTable(
     index("tasks_due_idx").on(t.dueDate),
   ]
 );
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clerkUserId: text("clerk_user_id").notNull().unique(),
+    email: text("email"),
+    name: text("name"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("users_clerk_idx").on(t.clerkUserId)]
+);
+
+// ─── Organization Memberships ─────────────────────────────────────────────────
+
+export const organizationMemberships = pgTable(
+  "organization_memberships",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** "owner" | "staff" */
+    role: text("role").notNull().default("staff"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("memberships_org_idx").on(t.organizationId),
+    index("memberships_user_idx").on(t.userId),
+  ]
+);

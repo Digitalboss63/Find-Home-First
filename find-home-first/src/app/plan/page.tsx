@@ -7,6 +7,7 @@
  */
 import type { Metadata } from "next";
 import { DEMO_PLANS } from "@/demo/data";
+import { requireOrganization } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "Plan & Billing",
@@ -48,7 +49,9 @@ function MinusIcon() {
   );
 }
 
-export default function PlanPage() {
+export default async function PlanPage() {
+  await requireOrganization();
+
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 lg:px-10">
       {/* Page header */}

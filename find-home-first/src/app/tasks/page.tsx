@@ -8,9 +8,11 @@
  * otherwise falls back to src/demo/data.ts.
  */
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { DEMO_TASKS } from "@/demo/data";
-import { listTasks } from "@/lib/repository";
+import { listTasks, isDemoAllowed } from "@/lib/repository";
 import type { TaskView } from "@/lib/repository";
+import { requireOrganization } from "@/lib/auth";
 import DemoNotice from "@/components/DemoNotice";
 
 export const metadata: Metadata = {
@@ -127,12 +129,17 @@ function dbTaskRows(rows: TaskView[]): TaskRowData[] {
 }
 
 export default async function TasksPage() {
-  const dbTasks = await listTasks();
-  const usingDemo = dbTasks === null;
+  const { organizationId } = await requireOrganization();
+  const dbTasks = await listTasks(organizationId);
+  const usingDemo = isDemoAllowed() && dbTasks === null;
+
+  if (!usingDemo && dbTasks === null) {
+    redirect("/unavailable");
+  }
 
   const allTasks: TaskRowData[] = usingDemo
     ? demoTaskRows()
-    : dbTaskRows(dbTasks);
+    : dbTaskRows(dbTasks!);
 
   const today = allTasks.filter((t) => t.status === "today");
   const upcoming = allTasks.filter((t) => t.status === "upcoming");

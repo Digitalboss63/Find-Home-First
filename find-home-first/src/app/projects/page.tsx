@@ -7,9 +7,11 @@
  */
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { DEMO_PROJECTS } from "@/demo/data";
-import { listProjects } from "@/lib/repository";
+import { listProjects, isDemoAllowed } from "@/lib/repository";
 import type { ProjectView } from "@/lib/repository";
+import { requireOrganization } from "@/lib/auth";
 import { getStageLabelForKey } from "@/lib/stages";
 import DemoNotice from "@/components/DemoNotice";
 
@@ -172,12 +174,17 @@ function dbToRowProject(p: ProjectView): RowProject {
 }
 
 export default async function ProjectsPage() {
-  const dbProjects = await listProjects();
-  const usingDemo = dbProjects === null;
+  const { organizationId } = await requireOrganization();
+  const dbProjects = await listProjects(organizationId);
+  const usingDemo = isDemoAllowed() && dbProjects === null;
+
+  if (!usingDemo && dbProjects === null) {
+    redirect("/unavailable");
+  }
 
   const allProjects: RowProject[] = usingDemo
     ? demoToRowProjects()
-    : dbProjects.map(dbToRowProject);
+    : dbProjects!.map(dbToRowProject);
 
   const active = allProjects.filter((p) => p.groupStatus === "active");
   const onHold = allProjects.filter((p) => p.groupStatus === "on-hold");

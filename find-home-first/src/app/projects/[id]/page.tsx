@@ -16,7 +16,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DEMO_PROJECTS, DEMO_TASKS } from "@/demo/data";
-import { getProjectById, listTasksForProject } from "@/lib/repository";
+import { getProjectById, listTasksForProject, isDemoAllowed } from "@/lib/repository";
+import { requireOrganization } from "@/lib/auth";
 import { STAGES } from "@/lib/stages";
 
 interface Props {
@@ -53,12 +54,9 @@ function demoTaskViews(projectId: string) {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
 
-  // Try DB first, fall back to demo
-  const dbProject = await getProjectById(id);
-  if (dbProject) return { title: dbProject.name };
-
+  // Try demo first for metadata (no auth required for metadata)
   const demo = DEMO_PROJECTS.find((p) => p.id === id);
-  return { title: demo?.name ?? "Project Not Found" };
+  return { title: demo?.name ?? "Project" };
 }
 
 // No generateStaticParams — dynamic rendering required for DB-backed pages.
@@ -68,21 +66,26 @@ export const dynamic = "force-dynamic";
 
 export default async function ProjectPage({ params }: Props) {
   const { id } = await params;
+  const { organizationId } = await requireOrganization();
 
   // Attempt DB lookup
-  const dbProject = await getProjectById(id);
-  const dbTasks = dbProject ? await listTasksForProject(id) : null;
+  const dbProject = await getProjectById(id, organizationId);
+  const dbTasks = dbProject ? await listTasksForProject(id, organizationId) : null;
 
-  const usingDemo = dbProject === null;
+  const usingDemo = isDemoAllowed() && dbProject === null;
+
+  if (!usingDemo && dbProject === null) {
+    notFound();
+  }
 
   const project = usingDemo ? demoProjectView(id) : {
-    id: dbProject.id,
-    name: dbProject.name,
-    community: dbProject.community,
-    currentStage: dbProject.currentStage,
-    targetMoveIn: dbProject.targetMoveIn,
-    blocker: dbProject.blocker,
-    residentName: dbProject.residentName,
+    id: dbProject!.id,
+    name: dbProject!.name,
+    community: dbProject!.community,
+    currentStage: dbProject!.currentStage,
+    targetMoveIn: dbProject!.targetMoveIn,
+    blocker: dbProject!.blocker,
+    residentName: dbProject!.residentName,
   };
 
   if (!project) notFound();

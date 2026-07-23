@@ -10,8 +10,10 @@
  */
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { DEMO_PROJECTS, DEMO_TASKS } from "@/demo/data";
-import { listActiveProjects, listTasks } from "@/lib/repository";
+import { listActiveProjects, listTasks, isDemoAllowed } from "@/lib/repository";
+import { requireOrganization } from "@/lib/auth";
 import { getStageLabelForKey } from "@/lib/stages";
 import StageJourney from "@/components/StageJourney";
 import BlockerAlert from "@/components/BlockerAlert";
@@ -49,15 +51,21 @@ function demoTasksAsViews() {
 }
 
 export default async function HomePage() {
-  // ── Fetch data — fall back to demo on failure ──────────────────────────────
-  const dbActiveProjects = await listActiveProjects();
-  const dbTasks = await listTasks();
+  const { organizationId } = await requireOrganization();
 
-  const usingDemo = dbActiveProjects === null || dbTasks === null;
+  // ── Fetch data — fall back to demo on failure ──────────────────────────────
+  const dbActiveProjects = await listActiveProjects(organizationId);
+  const dbTasks = await listTasks(organizationId);
+
+  const usingDemo = isDemoAllowed() && (dbActiveProjects === null || dbTasks === null);
+
+  if (!usingDemo && (dbActiveProjects === null || dbTasks === null)) {
+    redirect("/unavailable");
+  }
 
   const activeProjects = usingDemo
     ? demoProjectsAsViews().filter((p) => p.groupStatus === "active")
-    : dbActiveProjects.map((p) => ({
+    : dbActiveProjects!.map((p) => ({
         id: p.id,
         name: p.name,
         community: p.community,
