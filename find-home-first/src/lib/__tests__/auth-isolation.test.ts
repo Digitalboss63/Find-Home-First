@@ -4,7 +4,7 @@
  * Uses vi.hoisted() for mock functions referenced in vi.mock() factories,
  * avoiding the "variable not defined at hoist time" error.
  */
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Hoisted mocks (must be at top level, factories run before imports) ────────
 
@@ -48,9 +48,6 @@ describe("isDemoAllowed", () => {
 
   it("returns false in production without DEMO_MODE", () => {
     // Simulate production logic without actually changing NODE_ENV
-    const inProduction = false; // NODE_ENV !== "development" in test runner
-    const demoMode = process.env.DEMO_MODE === "true";
-    const result = inProduction || demoMode;
     // If neither development nor DEMO_MODE, should be false
     process.env.DEMO_MODE = "";
     const cleanResult = false || process.env.DEMO_MODE === "true";
