@@ -141,7 +141,8 @@ export default function HousingSearchClient({ properties, usingDemo }: Props) {
           className="mt-1 text-sm"
           style={{ color: "var(--color-text)", opacity: 0.6 }}
         >
-          Find available private units to evaluate for placement.
+          This is where your housing search begins. Filter and review available
+          private units to evaluate for placement.
         </p>
       </div>
 

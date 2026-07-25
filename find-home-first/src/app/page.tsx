@@ -122,16 +122,34 @@ export default async function HomePage() {
             </div>
           )}
 
-          {primaryProject && (
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Primary CTA — always dominant */}
             <Link
-              href={`/projects/${primaryProject.id}`}
+              href="/housing-search"
               className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
               style={{ backgroundColor: "var(--color-action)" }}
             >
-              Open project
+              Start Housing Search
               <span aria-hidden="true">→</span>
             </Link>
-          )}
+
+            {/* Secondary — open existing project */}
+            {primaryProject && (
+              <Link
+                href={`/projects/${primaryProject.id}`}
+                className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium"
+                style={{
+                  backgroundColor: "transparent",
+                  border: "1px solid var(--color-border)",
+                  color: "var(--color-primary)",
+                  opacity: 0.75,
+                }}
+              >
+                Open project
+                <span aria-hidden="true">→</span>
+              </Link>
+            )}
+          </div>
         </div>
       </section>
 
