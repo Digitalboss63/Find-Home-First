@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { createProjectAction } from "./actions";
+import { useActionState } from "react";
+import { createProjectAction, type CreateProjectState } from "./actions";
 
 const fieldStyle: React.CSSProperties = {
   backgroundColor: "#fff",
@@ -22,31 +22,16 @@ const labelStyle: React.CSSProperties = {
   opacity: 0.65,
 };
 
+const initialState: CreateProjectState = { error: null };
+
 export default function NewProjectForm() {
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
-    const form = e.currentTarget;
-    const formData = new FormData(form);
-
-    startTransition(async () => {
-      try {
-        await createProjectAction(formData);
-      } catch (err) {
-        // redirect() throws — don't show that as an error
-        const msg = err instanceof Error ? err.message : String(err);
-        if (!msg.includes("NEXT_REDIRECT")) {
-          setError(msg);
-        }
-      }
-    });
-  }
+  const [state, formAction, isPending] = useActionState(
+    createProjectAction,
+    initialState
+  );
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form action={formAction} className="space-y-5">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Name */}
         <div className="sm:col-span-2">
@@ -60,6 +45,7 @@ export default function NewProjectForm() {
             required
             placeholder="e.g. Johnson Family Placement"
             style={fieldStyle}
+            aria-describedby={state.error ? "form-error" : undefined}
           />
         </div>
 
@@ -75,6 +61,7 @@ export default function NewProjectForm() {
             required
             placeholder="e.g. Atlanta"
             style={fieldStyle}
+            aria-describedby={state.error ? "form-error" : undefined}
           />
         </div>
 
@@ -91,9 +78,10 @@ export default function NewProjectForm() {
             maxLength={2}
             placeholder="GA"
             style={fieldStyle}
-            onChange={(e) =>
-              (e.target.value = e.target.value.toUpperCase())
-            }
+            onChange={(e) => {
+              e.target.value = e.target.value.toUpperCase();
+            }}
+            aria-describedby={state.error ? "form-error" : undefined}
           />
         </div>
 
@@ -156,8 +144,9 @@ export default function NewProjectForm() {
         </div>
       </div>
 
-      {error && (
+      {state.error && (
         <p
+          id="form-error"
           className="text-sm rounded-lg px-3 py-2"
           style={{
             backgroundColor: "#FEF2F2",
@@ -165,8 +154,9 @@ export default function NewProjectForm() {
             border: "1px solid #FECACA",
           }}
           role="alert"
+          aria-live="assertive"
         >
-          {error}
+          {state.error}
         </p>
       )}
 
