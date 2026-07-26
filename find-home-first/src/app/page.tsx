@@ -12,7 +12,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DEMO_PROJECTS, DEMO_TASKS } from "@/demo/data";
-import { listActiveProjects, listTasks, isDemoAllowed } from "@/lib/repository";
+import {
+  listActiveProjects,
+  listTasks,
+  isDemoAllowed,
+} from "@/lib/repository";
 import { requireOrganization } from "@/lib/auth";
 import { getStageLabelForKey } from "@/lib/stages";
 import StageJourney from "@/components/StageJourney";
@@ -27,11 +31,21 @@ export const metadata: Metadata = {
 // ── Demo adapters ──────────────────────────────────────────────────────────────
 
 function demoProjectsAsViews() {
+  // Map demo stage keys to the closest workflow status for CTA derivation
+  const stageToStatus: Record<string, string> = {
+    "research": "researching_city",
+    "find-housing": "finding_property",
+    "secure-property": "application_in_progress",
+    "match-resident": "seeking_referrals",
+    "move-in": "move_in_scheduled",
+  };
   return DEMO_PROJECTS.map((p) => ({
     id: p.id,
     name: p.name,
     community: p.community,
     currentStage: p.currentStage as string,
+    currentStatus: stageToStatus[p.currentStage] ?? "researching_city",
+    nextAction: null as string | null,
     blocker: p.blocker ?? null,
     residentName: p.residentName,
     groupStatus:
@@ -54,8 +68,10 @@ export default async function HomePage() {
   const { organizationId } = await requireOrganization();
 
   // ── Fetch data — fall back to demo on failure ──────────────────────────────
-  const dbActiveProjects = await listActiveProjects(organizationId);
-  const dbTasks = await listTasks(organizationId);
+  const [dbActiveProjects, dbTasks] = await Promise.all([
+    listActiveProjects(organizationId),
+    listTasks(organizationId),
+  ]);
 
   const usingDemo = isDemoAllowed() && (dbActiveProjects === null || dbTasks === null);
 
@@ -70,6 +86,8 @@ export default async function HomePage() {
         name: p.name,
         community: p.community,
         currentStage: p.currentStage,
+        currentStatus: p.currentStatus,
+        nextAction: p.nextAction,
         blocker: p.blocker,
         residentName: p.residentName,
         groupStatus: p.groupStatus,
@@ -87,6 +105,41 @@ export default async function HomePage() {
   const blockedProject = activeProjects.find((p) => p.blocker);
   const primaryProject = blockedProject ?? activeProjects[0];
   const todayTasks = allTasks.filter((t) => t.status === "today");
+
+  // ── Primary CTA derivation (project-aware) ────────────────────────────────
+  // Statuses eligible for property search — Research gate enforced here too.
+  const FIND_PROPERTIES_STATUSES = new Set([
+    "city_approved",
+    "finding_property",
+    "contacting_owner",
+    "application_in_progress",
+    "property_approved",
+    "preparing_property",
+  ]);
+
+  type PrimaryAction =
+    | { label: string; href: string; isPrimary: true }
+    | null;
+
+  function derivePrimaryAction(): PrimaryAction {
+    if (!primaryProject) {
+      return { label: "Start New Placement", href: "/projects/new", isPrimary: true };
+    }
+    const status = (primaryProject as { currentStatus?: string }).currentStatus
+      ?? primaryProject.currentStage; // currentStage is the stage key; currentStatus is the raw status
+    if (status === "researching_city") {
+      return { label: "Complete Market Research", href: `/projects/${primaryProject.id}`, isPrimary: true };
+    }
+    if (FIND_PROPERTIES_STATUSES.has(status)) {
+      return { label: "Find Properties", href: `/housing-search?project=${primaryProject.id}`, isPrimary: true };
+    }
+    // Other active statuses — use project's nextAction if available, or open project
+    const nextActionLabel = (primaryProject as { nextAction?: string | null }).nextAction
+      ?? `Continue: ${primaryProject.name}`;
+    return { label: nextActionLabel, href: `/projects/${primaryProject.id}`, isPrimary: true };
+  }
+
+  const primaryAction = derivePrimaryAction();
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 lg:px-10">
@@ -112,7 +165,7 @@ export default async function HomePage() {
             {primaryProject?.blocker
               ? primaryProject.name
               : primaryProject
-              ? `Continue: ${primaryProject.name}`
+              ? primaryProject.name
               : "No active projects"}
           </h1>
 
@@ -123,15 +176,17 @@ export default async function HomePage() {
           )}
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* Primary CTA — always dominant */}
-            <Link
-              href="/housing-search"
-              className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
-              style={{ backgroundColor: "var(--color-action)" }}
-            >
-              Start Housing Search
-              <span aria-hidden="true">→</span>
-            </Link>
+            {/* Primary CTA — project-aware, always dominant */}
+            {primaryAction && (
+              <Link
+                href={primaryAction.href}
+                className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
+                style={{ backgroundColor: "var(--color-action)" }}
+              >
+                {primaryAction.label}
+                <span aria-hidden="true">→</span>
+              </Link>
+            )}
 
             {/* Secondary — open existing project */}
             {primaryProject && (

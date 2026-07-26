@@ -9,9 +9,12 @@
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:check": "drizzle-kit check",
     "db:seed": "tsx src/db/seed.ts",
     "db:studio": "drizzle-kit studio",
-    "test": "vitest run"
+    "test": "vitest run",
+    "rentcast:test": "tsx src/lib/rentcast-test.ts",
+    "migration:test": "tsx src/lib/migration-live-test.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.6.0",

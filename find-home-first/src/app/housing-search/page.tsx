@@ -1,63 +1,169 @@
 /**
- * /housing-search — Housing Search
+ * /housing-search — Property Lead Search
  *
- * Server component: fetches property candidates from the repository and
- * passes them to the interactive client component.
- * Falls back to demo data when DATABASE_URL is absent or a query fails.
+ * Requires a ?project= query param containing a valid projectId.
+ * Without one, shows the project selector.
+ *
+ * Research gate: projects at "Researching City" status cannot search.
+ * Eligible statuses: city_approved, finding_property, contacting_owner,
+ * application_in_progress, property_approved, preparing_property.
+ *
+ * Powered by the RentCast API (server-side, key never exposed to client).
  */
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { DEMO_PROPERTIES } from "@/demo/data";
-import { listPropertyCandidates, isDemoAllowed } from "@/lib/repository";
+import Link from "next/link";
 import { requireOrganization } from "@/lib/auth";
-import type { PropertyItemView } from "@/lib/types";
-import HousingSearchClient from "./HousingSearchClient";
+import {
+  getPropertySearchDraft,
+  listPropertyLeads,
+  listActiveProjects,
+  projectBelongsToOrg,
+  getProjectById,
+  isDemoAllowed,
+} from "@/lib/repository";
+import { isRentCastConfigured } from "@/lib/rentcast";
+import type { PropertySearchDraftView } from "@/lib/repository";
+import PropertySearchClient from "./PropertySearchClient";
+import ProjectSelector from "./ProjectSelector";
 
 export const metadata: Metadata = {
-  title: "Housing Search",
+  title: "Find Properties & Owners",
   description:
-    "Search for available private housing units for placement evaluation.",
+    "Find motivated property owners and suitable rental properties to lease.",
 };
 
-export default async function HousingSearchPage() {
-  const { organizationId } = await requireOrganization();
-  const dbCandidates = await listPropertyCandidates(organizationId);
-  const usingDemo = isDemoAllowed() && dbCandidates === null;
+/**
+ * Statuses at which property searching is permitted.
+ * "researching_city" is explicitly excluded — research must be completed first.
+ */
+const SEARCH_ELIGIBLE_STATUSES = new Set([
+  "city_approved",
+  "finding_property",
+  "contacting_owner",
+  "application_in_progress",
+  "property_approved",
+  "preparing_property",
+  // Later pipeline stages that may still need to find properties
+  "seeking_referrals",
+  "reviewing_resident",
+  "placement_approved",
+]);
 
-  if (!usingDemo && dbCandidates === null) {
-    redirect("/unavailable");
+interface PageProps {
+  searchParams: Promise<{ project?: string }>;
+}
+
+export default async function HousingSearchPage({ searchParams }: PageProps) {
+  const { organizationId, user } = await requireOrganization();
+  const params = await searchParams;
+  const rawProjectId = params.project;
+
+  // ── Validate projectId ──────────────────────────────────────────────────
+  let projectId: string | null = null;
+  if (rawProjectId) {
+    const valid = await projectBelongsToOrg(rawProjectId, organizationId);
+    if (valid) projectId = rawProjectId;
   }
 
-  let properties: PropertyItemView[];
-
-  if (usingDemo) {
-    // Map demo records to the shared view shape
-    properties = DEMO_PROPERTIES.map((p) => ({
-      id: p.id,
-      address: p.address,
-      community: p.community,
-      bedrooms: p.bedrooms,
-      monthlyRent: p.monthlyRent,
-      availableDate: p.availableDate,
-      landlordContact: p.landlordContact,
-      notes: p.notes,
-    }));
-  } else {
-    // Normalise DB records — only surface active listings
-    properties = dbCandidates!
-      .filter((c) => c.listingStatus === "active")
-      .map((c) => ({
-        id: c.id,
-        address: c.address,
-        community: c.community ?? "",
-        bedrooms: c.bedrooms ?? 0,
-        monthlyRent: c.monthlyRent ? parseFloat(c.monthlyRent) : 0,
-        availableDate: c.availableDate ?? "",
-        // DB records don't carry a free-text landlord field yet — leave blank
-        landlordContact: "",
-        notes: "",
-      }));
+  // No valid projectId → show project selector
+  if (!projectId) {
+    const activeProjects = await listActiveProjects(organizationId);
+    return <ProjectSelector projects={activeProjects ?? []} />;
   }
 
-  return <HousingSearchClient properties={properties} usingDemo={usingDemo} />;
+  // ── Research gate ────────────────────────────────────────────────────────
+  // Fetch the project to check its current status.
+  const project = await getProjectById(projectId, organizationId);
+
+  if (project && !SEARCH_ELIGIBLE_STATUSES.has(project.currentStatus)) {
+    // Project is at Researching City — block property search
+    return (
+      <div className="max-w-3xl mx-auto px-6 py-8 lg:px-10">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold" style={{ color: "var(--color-primary)" }}>
+            Find Properties &amp; Owners
+          </h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--color-text)", opacity: 0.6 }}>
+            {project.name}
+          </p>
+        </div>
+
+        <div
+          className="rounded-xl px-6 py-8"
+          style={{
+            backgroundColor: "var(--color-surface-soft)",
+            border: "1px solid var(--color-border)",
+          }}
+          role="status"
+        >
+          <h2
+            className="text-base font-semibold mb-2"
+            style={{ color: "var(--color-primary)" }}
+          >
+            Market Research Required First
+          </h2>
+          <p className="text-sm mb-5" style={{ color: "var(--color-text)", opacity: 0.7 }}>
+            This project is currently in the{" "}
+            <strong>Research</strong> stage. The city and market must be
+            approved before searching for properties. Complete your market
+            research and advance the project status to continue.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href={`/projects/${projectId}`}
+              className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
+              style={{ backgroundColor: "var(--color-action)" }}
+            >
+              Complete Market Research
+              <span aria-hidden="true">→</span>
+            </Link>
+            <Link
+              href="/housing-search"
+              className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium"
+              style={{
+                border: "1px solid var(--color-border)",
+                color: "var(--color-text)",
+                backgroundColor: "#fff",
+              }}
+            >
+              Select a different project
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Valid projectId, eligible status — load draft and leads ──────────────
+  const [savedDraft, savedLeads] = await Promise.all([
+    getPropertySearchDraft(organizationId, user.dbUserId, projectId),
+    listPropertyLeads(organizationId),
+  ]);
+
+  const initialDraft: PropertySearchDraftView = savedDraft ?? {
+    projectId,
+    city: "",
+    state: "",
+    zipCode: "",
+    propertyType: "",
+    minBedrooms: "",
+    minBathrooms: "",
+    maxRent: "",
+    maxDaysListed: "",
+    listingStatus: "active",
+    submitted: false,
+    lastSearchAt: null,
+    resultsSnapshot: null,
+    resultsCount: 0,
+    queryFingerprint: null,
+  };
+
+  return (
+    <PropertySearchClient
+      initialDraft={initialDraft}
+      savedLeadCount={savedLeads?.length ?? 0}
+      rentCastConfigured={isRentCastConfigured()}
+      isDemoMode={isDemoAllowed()}
+    />
+  );
 }

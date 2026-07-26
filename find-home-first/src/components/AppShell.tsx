@@ -10,7 +10,7 @@ import UserMenu from "@/components/UserMenu";
 const NAV_ITEMS = [
   { href: "/", label: "Home", icon: HomeIcon },
   { href: "/projects", label: "Projects", icon: ProjectsIcon },
-  { href: "/housing-search", label: "Housing Search", icon: SearchIcon },
+  { href: "/housing-search", label: "Find Properties", icon: SearchIcon },
   { href: "/people", label: "People & Contacts", icon: PeopleIcon },
   { href: "/tasks", label: "Tasks", icon: TasksIcon },
   { href: "/plan", label: "Plan & Billing", icon: PlanIcon },

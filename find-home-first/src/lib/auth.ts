@@ -96,3 +96,36 @@ export async function requireRole(
 ): Promise<void> {
   if (ctx.role !== requiredRole) redirect("/access-denied");
 }
+
+/**
+ * Platform-owner guard.
+ *
+ * Only the Clerk user whose ID matches PLATFORM_OWNER_CLERK_USER_ID may
+ * access Back Office routes and APIs. This is completely separate from
+ * organization owner/staff roles.
+ *
+ * Unauthorized users are redirected to /access-denied.
+ * The env var name is never surfaced in error messages or responses.
+ */
+export async function requirePlatformOwner(): Promise<{ clerkUserId: string }> {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+
+  const platformOwnerId = process.env.PLATFORM_OWNER_CLERK_USER_ID;
+  if (!platformOwnerId || userId !== platformOwnerId) {
+    redirect("/access-denied");
+  }
+
+  return { clerkUserId: userId };
+}
+
+/**
+ * Returns true when the currently authenticated Clerk user is the platform owner.
+ * Does not redirect — use for conditional rendering only.
+ */
+export async function isPlatformOwner(): Promise<boolean> {
+  const { userId } = await auth();
+  if (!userId) return false;
+  const platformOwnerId = process.env.PLATFORM_OWNER_CLERK_USER_ID;
+  return !!platformOwnerId && userId === platformOwnerId;
+}

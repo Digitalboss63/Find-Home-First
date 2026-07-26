@@ -2,6 +2,12 @@
  * Drizzle ORM schema — Find Home First
  *
  * Server-only. Never import this file in browser/client code.
+ *
+ * Canonical model:
+ * - Housing operators find motivated property owners and lease properties.
+ * - Property leads track the owner-outreach acquisition pipeline.
+ * - Placement projects track individual residents through move-in.
+ * - Back-office settings (ADA widget, platform config) are platform-level, not org-level.
  */
 import {
   pgTable,
@@ -11,7 +17,9 @@ import {
   integer,
   numeric,
   date,
+  boolean,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 // ─── Organizations ──────────────────────────────────────────────────────────
@@ -27,7 +35,50 @@ export const organizations = pgTable("organizations", {
     .defaultNow(),
 });
 
-// ─── Contacts ───────────────────────────────────────────────────────────────
+// ─── Users ───────────────────────────────────────────────────────────────────
+
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clerkUserId: text("clerk_user_id").notNull().unique(),
+    email: text("email"),
+    name: text("name"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("users_clerk_idx").on(t.clerkUserId)]
+);
+
+// ─── Organization Memberships ─────────────────────────────────────────────────
+
+export const organizationMemberships = pgTable(
+  "organization_memberships",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** "owner" | "staff" */
+    role: text("role").notNull().default("staff"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("memberships_org_idx").on(t.organizationId),
+    index("memberships_user_idx").on(t.userId),
+  ]
+);
+
+// ─── Contacts — referral partners, caseworkers ───────────────────────────────
 
 export const contacts = pgTable(
   "contacts",
@@ -36,7 +87,7 @@ export const contacts = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    /** "referral" | "landlord" | "owner" | "staff" | "other" */
+    /** "referral" | "staff" | "other" */
     contactType: text("contact_type").notNull().default("referral"),
     name: text("name").notNull(),
     organizationName: text("organization_name"),
@@ -57,7 +108,266 @@ export const contacts = pgTable(
   ]
 );
 
-// ─── Residents ──────────────────────────────────────────────────────────────
+// ─── Property Owners ─────────────────────────────────────────────────────────
+//
+// Owners are the primary lead target. Separate from referral contacts.
+// One owner may own multiple properties.
+
+export const propertyOwners = pgTable(
+  "property_owners",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** "individual" | "organization" | "unknown" */
+    ownerType: text("owner_type").notNull().default("unknown"),
+    phone: text("phone"),
+    email: text("email"),
+    mailingAddress: text("mailing_address"),
+    /** True when mailing address differs from any linked property address. */
+    mailingDiffersFromProperty: boolean("mailing_differs_from_property"),
+    /** True when owner-occupied (may indicate less motivation). */
+    ownerOccupied: boolean("owner_occupied"),
+    /** Freeform motivation notes — e.g. "extended listing age", "non-owner-occupied". */
+    motivationNotes: text("motivation_notes"),
+    /** "new" | "researching" | "outreach" | "follow_up" | "meeting" | "negotiating" | "contracted" | "inactive" */
+    outreachStatus: text("outreach_status").notNull().default("new"),
+    lastContactDate: date("last_contact_date"),
+    nextFollowUpDate: date("next_follow_up_date"),
+    lastResponse: text("last_response"),
+    /** How this lead was found — "rentcast" | "zillow" | "manual" | "referral" | "other" */
+    leadSource: text("lead_source").notNull().default("manual"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("owners_org_idx").on(t.organizationId),
+    index("owners_status_idx").on(t.outreachStatus),
+  ]
+);
+
+// ─── Property Leads ───────────────────────────────────────────────────────────
+//
+// One property being evaluated for leasing. Linked to an owner.
+// Replaces the old property_candidates (listing-aggregator model).
+// Acquisition pipeline stage lives here.
+
+export const ACQUISITION_STAGES = [
+  "lead_identified",
+  "owner_research",
+  "outreach",
+  "follow_up",
+  "meeting_scheduled",
+  "application_requested",
+  "application_submitted",
+  "approved",
+  "rejected",
+  "lease_executed",
+  "property_preparation",
+  "ready_for_referrals",
+] as const;
+
+export type AcquisitionStage = (typeof ACQUISITION_STAGES)[number];
+
+export const propertyLeads = pgTable(
+  "property_leads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    ownerId: uuid("owner_id").references(() => propertyOwners.id, {
+      onDelete: "set null",
+    }),
+    /** "rentcast" | "zillow" | "manual" | "other" */
+    source: text("source").notNull().default("manual"),
+    /** External listing/property ID from source API. */
+    externalId: text("external_id"),
+    sourceUrl: text("source_url"),
+    /** Normalized address for dedup (lowercase, alphanumeric+space). */
+    normalizedAddress: text("normalized_address"),
+    /** Normalized source URL for dedup (hostname+pathname, lowercase). */
+    normalizedSourceUrl: text("normalized_source_url"),
+    address: text("address").notNull(),
+    city: text("city"),
+    state: text("state"),
+    zip: text("zip"),
+    /** "single_family" | "multi_family" | "condo" | "townhouse" | "apartment" | "sro" | "other" */
+    propertyType: text("property_type"),
+    bedrooms: integer("bedrooms"),
+    bathrooms: numeric("bathrooms", { precision: 3, scale: 1 }),
+    monthlyRent: numeric("monthly_rent", { precision: 10, scale: 2 }),
+    deposit: numeric("deposit", { precision: 10, scale: 2 }),
+    /** "utilities_included" | "utilities_excluded" | "partial" | "unknown" */
+    utilitiesStatus: text("utilities_status"),
+    /** "excellent" | "good" | "fair" | "poor" | "unknown" */
+    propertyCondition: text("property_condition"),
+    /** "vacant" | "occupied" | "unknown" */
+    occupancyStatus: text("occupancy_status").default("unknown"),
+    /** "active" | "inactive" | "archived" */
+    listingStatus: text("listing_status").notNull().default("active"),
+    listingDate: date("listing_date"),
+    lastSeenDate: date("last_seen_date"),
+    daysOnMarket: integer("days_on_market"),
+    listingContact: text("listing_contact"),
+    listingPhone: text("listing_phone"),
+    listingEmail: text("listing_email"),
+    /** Current stage in the acquisition pipeline. */
+    acquisitionStage: text("acquisition_stage")
+      .notNull()
+      .default("lead_identified"),
+    /** "pending" | "suitable" | "not_suitable" | "deferred" */
+    qualificationStatus: text("qualification_status")
+      .notNull()
+      .default("pending"),
+    qualificationReason: text("qualification_reason"),
+    /** Free-form suitability notes for private resident spaces. */
+    suitabilityNotes: text("suitability_notes"),
+    followUpDate: date("follow_up_date"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("leads_org_idx").on(t.organizationId),
+    index("leads_stage_idx").on(t.acquisitionStage),
+    index("leads_owner_idx").on(t.ownerId),
+    index("leads_external_idx").on(t.externalId),
+    // Prevent duplicate saved leads from same API source within same org
+    uniqueIndex("leads_org_external_idx").on(t.organizationId, t.externalId),
+    // Prevent duplicate leads by normalized address within same org
+    uniqueIndex("leads_org_norm_address_idx").on(t.organizationId, t.normalizedAddress),
+    // Prevent duplicate leads by normalized source URL within same org
+    uniqueIndex("leads_org_norm_url_idx").on(t.organizationId, t.normalizedSourceUrl),
+  ]
+);
+
+// ─── Property Search Drafts ───────────────────────────────────────────────────
+//
+// Persists a user's RentCast search criteria and submitted state.
+// One row per user per org. Restored on return so work is never lost.
+
+export const propertySearchDrafts = pgTable(
+  "property_search_drafts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /**
+     * Required project scope. This draft belongs to a specific placement
+     * project. organizationId ownership of the project is verified on every write.
+     */
+    projectId: uuid("project_id").notNull().references(() => projects.id, {
+      onDelete: "cascade",
+    }),
+    // Search criteria
+    city: text("city").notNull().default(""),
+    state: text("state").notNull().default(""),
+    zipCode: text("zip_code").notNull().default(""),
+    propertyType: text("property_type").notNull().default(""),
+    minBedrooms: text("min_bedrooms").notNull().default(""),
+    minBathrooms: text("min_bathrooms").notNull().default(""),
+    maxRent: text("max_rent").notNull().default(""),
+    maxDaysListed: text("max_days_listed").notNull().default(""),
+    /** "active" | "inactive" | "" (any) */
+    listingStatus: text("listing_status").notNull().default("active"),
+    // Execution state
+    /** True when user has pressed "Search Properties" at least once. */
+    submitted: boolean("submitted").notNull().default(false),
+    lastSearchAt: timestamp("last_search_at", { withTimezone: true }),
+    /**
+     * Normalized JSON snapshot of the last RentCast result set.
+     * Allows restoring results on return without re-calling the API.
+     * Stored as a JSON string; never contains raw API credentials.
+     */
+    resultsSnapshot: text("results_snapshot"),
+    /** Count of results in the snapshot (for display before parsing). */
+    resultsCount: integer("results_count").notNull().default(0),
+    /**
+     * Fingerprint of the search parameters that produced the snapshot.
+     * Used to detect stale results when criteria change.
+     */
+    queryFingerprint: text("query_fingerprint"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // One draft per (org, user, project). NULL projectId uses COALESCE sentinel
+    // in the SQL migration unique index; Drizzle sees it as a composite.
+    index("search_drafts_org_user_idx").on(t.organizationId, t.userId),
+    index("search_drafts_project_idx").on(t.projectId),
+  ]
+);
+
+// ─── Properties (secured / leased units) ─────────────────────────────────────
+//
+// A property that has completed the acquisition pipeline and been secured
+// through a lease or operating agreement. Ready for resident placement.
+
+export const properties = pgTable(
+  "properties",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id").references(() => propertyLeads.id, {
+      onDelete: "set null",
+    }),
+    ownerId: uuid("owner_id").references(() => propertyOwners.id, {
+      onDelete: "set null",
+    }),
+    address: text("address").notNull(),
+    city: text("city"),
+    state: text("state"),
+    zip: text("zip"),
+    propertyType: text("property_type"),
+    bedrooms: integer("bedrooms"),
+    bathrooms: numeric("bathrooms", { precision: 3, scale: 1 }),
+    monthlyRent: numeric("monthly_rent", { precision: 10, scale: 2 }),
+    deposit: numeric("deposit", { precision: 10, scale: 2 }),
+    utilitiesStatus: text("utilities_status"),
+    /** "lease" | "operating_agreement" | "other" */
+    agreementType: text("agreement_type"),
+    leaseStartDate: date("lease_start_date"),
+    leaseEndDate: date("lease_end_date"),
+    availableDate: date("available_date"),
+    /** "available" | "preparing" | "occupied" | "unavailable" */
+    readinessStatus: text("readiness_status").notNull().default("available"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("properties_org_idx").on(t.organizationId),
+    index("properties_status_idx").on(t.readinessStatus),
+  ]
+);
+
+// ─── Residents ───────────────────────────────────────────────────────────────
 
 export const residents = pgTable(
   "residents",
@@ -91,85 +401,12 @@ export const residents = pgTable(
   ]
 );
 
-// ─── Property candidates (listing search results) ────────────────────────────
+// ─── Projects (placement cases) ───────────────────────────────────────────────
+//
+// One project = one resident or household placement case.
+// Tracks the resident through the placement workflow.
+// The 13 workflow statuses remain authoritative.
 
-export const propertyCandidates = pgTable(
-  "property_candidates",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
-    provider: text("provider").notNull().default("manual"),
-    externalListingId: text("external_listing_id"),
-    sourceUrl: text("source_url"),
-    address: text("address").notNull(),
-    community: text("community"),
-    bedrooms: integer("bedrooms"),
-    bathrooms: numeric("bathrooms", { precision: 3, scale: 1 }),
-    monthlyRent: numeric("monthly_rent", { precision: 10, scale: 2 }),
-    availableDate: date("available_date"),
-    /** "active" | "unavailable" | "pending_review" | "archived" */
-    listingStatus: text("listing_status").notNull().default("active"),
-    retrievedAt: timestamp("retrieved_at", { withTimezone: true }),
-    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (t) => [
-    index("prop_candidates_org_idx").on(t.organizationId),
-    index("prop_candidates_status_idx").on(t.listingStatus),
-    index("prop_candidates_community_idx").on(t.community),
-  ]
-);
-
-// ─── Properties (secured/leased units) ──────────────────────────────────────
-
-export const properties = pgTable(
-  "properties",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
-    candidateId: uuid("candidate_id").references(() => propertyCandidates.id, {
-      onDelete: "set null",
-    }),
-    ownerContactId: uuid("owner_contact_id").references(() => contacts.id, {
-      onDelete: "set null",
-    }),
-    address: text("address").notNull(),
-    community: text("community"),
-    bedrooms: integer("bedrooms"),
-    bathrooms: numeric("bathrooms", { precision: 3, scale: 1 }),
-    monthlyRent: numeric("monthly_rent", { precision: 10, scale: 2 }),
-    availableDate: date("available_date"),
-    /** "available" | "preparing" | "occupied" | "unavailable" */
-    readinessStatus: text("readiness_status").notNull().default("available"),
-    notes: text("notes"),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (t) => [
-    index("properties_org_idx").on(t.organizationId),
-    index("properties_status_idx").on(t.readinessStatus),
-  ]
-);
-
-// ─── Projects ────────────────────────────────────────────────────────────────
-
-/**
- * The 13 workflow statuses — source of truth.
- * Visible stage is DERIVED from this value (see statusToStage in lib/stages.ts).
- */
 export const PROJECT_STATUSES = [
   "researching_city",
   "city_approved",
@@ -203,10 +440,14 @@ export const projects = pgTable(
     propertyId: uuid("property_id").references(() => properties.id, {
       onDelete: "set null",
     }),
-    currentStatus: text("current_status").notNull().default("researching_city"),
+    currentStatus: text("current_status")
+      .notNull()
+      .default("researching_city"),
     targetMoveIn: date("target_move_in"),
     blocker: text("blocker"),
     blockerReason: text("blocker_reason"),
+    /** What the case worker should do next. */
+    nextAction: text("next_action"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -221,7 +462,7 @@ export const projects = pgTable(
   ]
 );
 
-// ─── Project status history ──────────────────────────────────────────────────
+// ─── Project Status History ───────────────────────────────────────────────────
 
 export const projectStatusHistory = pgTable(
   "project_status_history",
@@ -273,39 +514,46 @@ export const tasks = pgTable(
   ]
 );
 
-// ─── Users ───────────────────────────────────────────────────────────────────
+// ─── Back Office — Platform Settings ─────────────────────────────────────────
+//
+// Platform-level settings, not org-level. Managed by the platform owner only.
 
-export const users = pgTable(
-  "users",
+export const platformSettings = pgTable("platform_settings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** Unique key for each setting — e.g. "ada_widget" */
+  settingKey: text("setting_key").notNull().unique(),
+  value: text("value"),
+  enabled: boolean("enabled").notNull().default(false),
+  updatedByClerkUserId: text("updated_by_clerk_user_id"),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ─── Audit Log ───────────────────────────────────────────────────────────────
+//
+// Platform-level event log. Used by Back Office audit view.
+
+export const auditLog = pgTable(
+  "audit_log",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clerkUserId: text("clerk_user_id").notNull().unique(),
-    email: text("email"),
-    name: text("name"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [index("users_clerk_idx").on(t.clerkUserId)]
-);
-
-// ─── Organization Memberships ─────────────────────────────────────────────────
-
-export const organizationMemberships = pgTable(
-  "organization_memberships",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    organizationId: uuid("organization_id")
+    /** Clerk user ID of the actor. */
+    actorClerkUserId: text("actor_clerk_user_id"),
+    actorEmail: text("actor_email"),
+    /** e.g. "ada_widget.enabled", "ada_widget.updated", "org.created" */
+    eventType: text("event_type").notNull(),
+    /** Free-form detail payload (JSON string or text). */
+    detail: text("detail"),
+    organizationId: uuid("organization_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    /** "owner" | "staff" */
-    role: text("role").notNull().default("staff"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+      .defaultNow(),
   },
   (t) => [
-    index("memberships_org_idx").on(t.organizationId),
-    index("memberships_user_idx").on(t.userId),
+    index("audit_log_actor_idx").on(t.actorClerkUserId),
+    index("audit_log_event_idx").on(t.eventType),
+    index("audit_log_org_idx").on(t.organizationId),
+    index("audit_log_created_idx").on(t.createdAt),
   ]
 );

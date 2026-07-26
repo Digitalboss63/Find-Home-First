@@ -1,22 +1,27 @@
 /**
  * Repository — typed data-access layer.
  *
- * SECURITY: All functions require organizationId from requireOrganization().
- * Never pass organizationId from client input.
+ * SECURITY: All org-scoped functions require organizationId from
+ * requireOrganization(). Never pass organizationId from client input.
+ * Platform-level functions require requirePlatformOwner() in the caller.
  *
  * Demo fallback only in development or DEMO_MODE=true.
  * Production failures return null — callers must redirect /unavailable.
  *
  * Server-only: never import from client components.
  */
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import {
   projects,
   tasks,
   contacts,
   residents,
-  propertyCandidates,
+  propertyLeads,
+  propertyOwners,
+  propertySearchDrafts,
+  platformSettings,
+  auditLog,
 } from "@/db/schema";
 import { statusToStageKey } from "./stages";
 
@@ -42,6 +47,7 @@ export interface ProjectView {
   targetMoveIn: string | null;
   blocker: string | null;
   blockerReason: string | null;
+  nextAction: string | null;
   residentName: string | null;
   groupStatus: "active" | "completed" | "closed";
   createdAt: Date;
@@ -81,16 +87,88 @@ export interface ResidentView {
   referredByName: string | null;
 }
 
-export interface PropertyCandidateView {
+export interface PropertyLeadView {
   id: string;
   address: string;
-  community: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  propertyType: string | null;
   bedrooms: number | null;
+  bathrooms: string | null;
   monthlyRent: string | null;
-  availableDate: string | null;
   listingStatus: string;
-  provider: string;
+  listingDate: string | null;
+  lastSeenDate: string | null;
+  daysOnMarket: number | null;
+  listingContact: string | null;
+  listingPhone: string | null;
+  listingEmail: string | null;
+  source: string;
+  externalId: string | null;
   sourceUrl: string | null;
+  acquisitionStage: string;
+  qualificationStatus: string;
+  qualificationReason: string | null;
+  followUpDate: string | null;
+  notes: string | null;
+  ownerId: string | null;
+}
+
+export interface PropertyOwnerView {
+  id: string;
+  name: string;
+  ownerType: string;
+  phone: string | null;
+  email: string | null;
+  mailingAddress: string | null;
+  mailingDiffersFromProperty: boolean | null;
+  ownerOccupied: boolean | null;
+  motivationNotes: string | null;
+  outreachStatus: string;
+  lastContactDate: string | null;
+  nextFollowUpDate: string | null;
+  lastResponse: string | null;
+  leadSource: string;
+  notes: string | null;
+}
+
+export interface PropertySearchDraftView {
+  /** Required project scope — must be a valid project ID. */
+  projectId: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  propertyType: string;
+  minBedrooms: string;
+  minBathrooms: string;
+  maxRent: string;
+  maxDaysListed: string;
+  listingStatus: string;
+  submitted: boolean;
+  lastSearchAt: Date | null;
+  /** JSON string of normalized RentCast result snapshot. */
+  resultsSnapshot: string | null;
+  resultsCount: number;
+  queryFingerprint: string | null;
+}
+
+export interface PlatformSettingView {
+  settingKey: string;
+  value: string | null;
+  enabled: boolean;
+  updatedByClerkUserId: string | null;
+  updatedAt: Date;
+}
+
+export interface AuditLogView {
+  id: string;
+  actorClerkUserId: string | null;
+  actorEmail: string | null;
+  eventType: string;
+  detail: string | null;
+  organizationId: string | null;
+  createdAt: Date;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -118,6 +196,7 @@ export async function listProjects(
         targetMoveIn: projects.targetMoveIn,
         blocker: projects.blocker,
         blockerReason: projects.blockerReason,
+        nextAction: projects.nextAction,
         residentDisplayName: residents.displayName,
         createdAt: projects.createdAt,
       })
@@ -135,6 +214,7 @@ export async function listProjects(
       targetMoveIn: r.targetMoveIn,
       blocker: r.blocker,
       blockerReason: r.blockerReason,
+      nextAction: r.nextAction,
       residentName: r.residentDisplayName ?? null,
       groupStatus: deriveGroupStatus(r.currentStatus),
       createdAt: r.createdAt,
@@ -169,12 +249,15 @@ export async function getProjectById(
         targetMoveIn: projects.targetMoveIn,
         blocker: projects.blocker,
         blockerReason: projects.blockerReason,
+        nextAction: projects.nextAction,
         residentDisplayName: residents.displayName,
         createdAt: projects.createdAt,
       })
       .from(projects)
       .leftJoin(residents, eq(projects.residentId, residents.id))
-      .where(and(eq(projects.id, id), eq(projects.organizationId, organizationId)))
+      .where(
+        and(eq(projects.id, id), eq(projects.organizationId, organizationId))
+      )
       .limit(1);
 
     if (rows.length === 0) return null;
@@ -188,6 +271,7 @@ export async function getProjectById(
       targetMoveIn: r.targetMoveIn,
       blocker: r.blocker,
       blockerReason: r.blockerReason,
+      nextAction: r.nextAction,
       residentName: r.residentDisplayName ?? null,
       groupStatus: deriveGroupStatus(r.currentStatus),
       createdAt: r.createdAt,
@@ -255,7 +339,12 @@ export async function listTasksForProject(
       })
       .from(tasks)
       .leftJoin(projects, eq(tasks.projectId, projects.id))
-      .where(and(eq(tasks.projectId, projectId), eq(tasks.organizationId, organizationId)))
+      .where(
+        and(
+          eq(tasks.projectId, projectId),
+          eq(tasks.organizationId, organizationId)
+        )
+      )
       .orderBy(tasks.dueDate);
 
     return rows.map((r) => ({
@@ -325,7 +414,10 @@ export async function listResidents(
         referredByName: referralContacts.name,
       })
       .from(residents)
-      .leftJoin(referralContacts, eq(residents.referralContactId, referralContacts.id))
+      .leftJoin(
+        referralContacts,
+        eq(residents.referralContactId, referralContacts.id)
+      )
       .where(eq(residents.organizationId, organizationId))
       .orderBy(residents.displayName);
 
@@ -347,43 +439,593 @@ export async function listResidents(
   }
 }
 
-// ─── Property candidates ──────────────────────────────────────────────────────
+// ─── Property Leads ───────────────────────────────────────────────────────────
 
-export async function listPropertyCandidates(
+export async function listPropertyLeads(
   organizationId: string
-): Promise<PropertyCandidateView[] | null> {
+): Promise<PropertyLeadView[] | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    const rows = await db
+      .select()
+      .from(propertyLeads)
+      .where(eq(propertyLeads.organizationId, organizationId))
+      .orderBy(desc(propertyLeads.createdAt));
+
+    return rows.map((r) => ({
+      id: r.id,
+      address: r.address,
+      city: r.city,
+      state: r.state,
+      zip: r.zip,
+      propertyType: r.propertyType,
+      bedrooms: r.bedrooms,
+      bathrooms: r.bathrooms,
+      monthlyRent: r.monthlyRent,
+      listingStatus: r.listingStatus,
+      listingDate: r.listingDate,
+      lastSeenDate: r.lastSeenDate,
+      daysOnMarket: r.daysOnMarket,
+      listingContact: r.listingContact,
+      listingPhone: r.listingPhone,
+      listingEmail: r.listingEmail,
+      source: r.source,
+      externalId: r.externalId,
+      sourceUrl: r.sourceUrl,
+      acquisitionStage: r.acquisitionStage,
+      qualificationStatus: r.qualificationStatus,
+      qualificationReason: r.qualificationReason,
+      followUpDate: r.followUpDate,
+      notes: r.notes,
+      ownerId: r.ownerId,
+    }));
+  } catch {
+    console.warn("[repository] listPropertyLeads failed");
+    return null;
+  }
+}
+
+export interface SavePropertyLeadInput {
+  source: string;
+  externalId?: string;
+  sourceUrl?: string;
+  address: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  propertyType?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  monthlyRent?: number;
+  listingStatus?: string;
+  listingDate?: string;
+  lastSeenDate?: string;
+  daysOnMarket?: number;
+  listingContact?: string;
+  listingPhone?: string;
+  listingEmail?: string;
+  notes?: string;
+}
+
+// ─── Dedup helpers ────────────────────────────────────────────────────────────
+
+function normalizeAddress(addr: string): string {
+  return addr.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return (u.hostname + u.pathname).toLowerCase().replace(/\/$/, "");
+  } catch {
+    return url.toLowerCase().trim();
+  }
+}
+
+/**
+ * Saves a property lead. Prevents duplicates by externalId, normalizedSourceUrl, and normalizedAddress.
+ * Returns { id, duplicate: false } on success, { id, duplicate: true } if already exists.
+ */
+export async function savePropertyLead(
+  organizationId: string,
+  input: SavePropertyLeadInput
+): Promise<{ id: string; duplicate: boolean } | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    const normalizedAddr = input.address ? normalizeAddress(input.address) : null;
+    const normalizedSrcUrl = input.sourceUrl ? normalizeUrl(input.sourceUrl) : null;
+
+    // Check duplicate by externalId
+    if (input.externalId) {
+      const existing = await db
+        .select({ id: propertyLeads.id })
+        .from(propertyLeads)
+        .where(
+          and(
+            eq(propertyLeads.organizationId, organizationId),
+            eq(propertyLeads.externalId, input.externalId)
+          )
+        )
+        .limit(1);
+      if (existing.length > 0) {
+        return { id: existing[0].id, duplicate: true };
+      }
+    }
+
+    // Check duplicate by normalizedSourceUrl
+    if (normalizedSrcUrl) {
+      const existing = await db
+        .select({ id: propertyLeads.id })
+        .from(propertyLeads)
+        .where(
+          and(
+            eq(propertyLeads.organizationId, organizationId),
+            eq(propertyLeads.normalizedSourceUrl, normalizedSrcUrl)
+          )
+        )
+        .limit(1);
+      if (existing.length > 0) {
+        return { id: existing[0].id, duplicate: true };
+      }
+    }
+
+    // Check duplicate by normalizedAddress
+    if (normalizedAddr) {
+      const existing = await db
+        .select({ id: propertyLeads.id })
+        .from(propertyLeads)
+        .where(
+          and(
+            eq(propertyLeads.organizationId, organizationId),
+            eq(propertyLeads.normalizedAddress, normalizedAddr)
+          )
+        )
+        .limit(1);
+      if (existing.length > 0) {
+        return { id: existing[0].id, duplicate: true };
+      }
+    }
+
+    const inserted = await db
+      .insert(propertyLeads)
+      .values({
+        organizationId,
+        source: input.source,
+        externalId: input.externalId ?? null,
+        sourceUrl: input.sourceUrl ?? null,
+        normalizedAddress: normalizedAddr,
+        normalizedSourceUrl: normalizedSrcUrl,
+        address: input.address,
+        city: input.city ?? null,
+        state: input.state ?? null,
+        zip: input.zip ?? null,
+        propertyType: input.propertyType ?? null,
+        bedrooms: input.bedrooms ?? null,
+        bathrooms: input.bathrooms != null ? String(input.bathrooms) : null,
+        monthlyRent:
+          input.monthlyRent != null ? String(input.monthlyRent) : null,
+        listingStatus: input.listingStatus ?? "active",
+        listingDate: input.listingDate ?? null,
+        lastSeenDate: input.lastSeenDate ?? null,
+        daysOnMarket: input.daysOnMarket ?? null,
+        listingContact: input.listingContact ?? null,
+        listingPhone: input.listingPhone ?? null,
+        listingEmail: input.listingEmail ?? null,
+        notes: input.notes ?? null,
+      })
+      .returning({ id: propertyLeads.id });
+
+    return { id: inserted[0].id, duplicate: false };
+  } catch (err) {
+    // If the insert fails due to a unique constraint violation (race condition),
+    // treat it as a duplicate rather than an error.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (
+      msg.includes("unique") ||
+      msg.includes("duplicate") ||
+      msg.includes("23505") // PostgreSQL unique_violation error code
+    ) {
+      console.warn("[repository] savePropertyLead: duplicate constraint race — returning duplicate");
+      // Re-query to get the existing ID
+      try {
+        const normalizedAddr = input.address ? normalizeAddress(input.address) : null;
+        const normalizedSrcUrl = input.sourceUrl ? normalizeUrl(input.sourceUrl) : null;
+        const db2 = getDb();
+        if (db2 && normalizedAddr) {
+          const existing = await db2
+            .select({ id: propertyLeads.id })
+            .from(propertyLeads)
+            .where(
+              and(
+                eq(propertyLeads.organizationId, organizationId),
+                eq(propertyLeads.normalizedAddress, normalizedAddr)
+              )
+            )
+            .limit(1);
+          if (existing.length > 0) return { id: existing[0].id, duplicate: true };
+        }
+        if (db2 && normalizedSrcUrl) {
+          const existing = await db2
+            .select({ id: propertyLeads.id })
+            .from(propertyLeads)
+            .where(
+              and(
+                eq(propertyLeads.organizationId, organizationId),
+                eq(propertyLeads.normalizedSourceUrl, normalizedSrcUrl)
+              )
+            )
+            .limit(1);
+          if (existing.length > 0) return { id: existing[0].id, duplicate: true };
+        }
+      } catch {
+        // best effort
+      }
+      return { id: "duplicate", duplicate: true };
+    }
+    console.warn("[repository] savePropertyLead failed:", msg);
+    return null;
+  }
+}
+
+// ─── Property Owners ─────────────────────────────────────────────────────────
+
+export async function getPropertyOwner(
+  ownerId: string,
+  organizationId: string
+): Promise<PropertyOwnerView | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    const rows = await db
+      .select()
+      .from(propertyOwners)
+      .where(
+        and(
+          eq(propertyOwners.id, ownerId),
+          eq(propertyOwners.organizationId, organizationId)
+        )
+      )
+      .limit(1);
+
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      id: r.id,
+      name: r.name,
+      ownerType: r.ownerType,
+      phone: r.phone,
+      email: r.email,
+      mailingAddress: r.mailingAddress,
+      mailingDiffersFromProperty: r.mailingDiffersFromProperty,
+      ownerOccupied: r.ownerOccupied,
+      motivationNotes: r.motivationNotes,
+      outreachStatus: r.outreachStatus,
+      lastContactDate: r.lastContactDate,
+      nextFollowUpDate: r.nextFollowUpDate,
+      lastResponse: r.lastResponse,
+      leadSource: r.leadSource,
+      notes: r.notes,
+    };
+  } catch {
+    console.warn("[repository] getPropertyOwner failed");
+    return null;
+  }
+}
+
+// ─── Project ownership verification ──────────────────────────────────────────
+
+/**
+ * Returns true if the project belongs to the organization.
+ * Use this to verify projectId from client input before using it in queries.
+ */
+export async function projectBelongsToOrg(
+  projectId: string,
+  organizationId: string
+): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  try {
+    const rows = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.id, projectId),
+          eq(projects.organizationId, organizationId)
+        )
+      )
+      .limit(1);
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+// ─── Property Search Drafts ───────────────────────────────────────────────────
+
+/**
+ * Gets the user's saved property search draft for a specific project.
+ * projectId MUST be a valid project ID belonging to organizationId.
+ * organizationId and userId MUST come from requireOrganization().
+ */
+export async function getPropertySearchDraft(
+  organizationId: string,
+  userId: string,
+  projectId: string
+): Promise<PropertySearchDraftView | null> {
   const db = getDb();
   if (!db) return null;
   try {
     const rows = await db
       .select({
-        id: propertyCandidates.id,
-        address: propertyCandidates.address,
-        community: propertyCandidates.community,
-        bedrooms: propertyCandidates.bedrooms,
-        monthlyRent: propertyCandidates.monthlyRent,
-        availableDate: propertyCandidates.availableDate,
-        listingStatus: propertyCandidates.listingStatus,
-        provider: propertyCandidates.provider,
-        sourceUrl: propertyCandidates.sourceUrl,
+        projectId: propertySearchDrafts.projectId,
+        city: propertySearchDrafts.city,
+        state: propertySearchDrafts.state,
+        zipCode: propertySearchDrafts.zipCode,
+        propertyType: propertySearchDrafts.propertyType,
+        minBedrooms: propertySearchDrafts.minBedrooms,
+        minBathrooms: propertySearchDrafts.minBathrooms,
+        maxRent: propertySearchDrafts.maxRent,
+        maxDaysListed: propertySearchDrafts.maxDaysListed,
+        listingStatus: propertySearchDrafts.listingStatus,
+        submitted: propertySearchDrafts.submitted,
+        lastSearchAt: propertySearchDrafts.lastSearchAt,
+        resultsSnapshot: propertySearchDrafts.resultsSnapshot,
+        resultsCount: propertySearchDrafts.resultsCount,
+        queryFingerprint: propertySearchDrafts.queryFingerprint,
       })
-      .from(propertyCandidates)
-      .where(eq(propertyCandidates.organizationId, organizationId))
-      .orderBy(propertyCandidates.createdAt);
+      .from(propertySearchDrafts)
+      .where(
+        and(
+          eq(propertySearchDrafts.organizationId, organizationId),
+          eq(propertySearchDrafts.userId, userId),
+          eq(propertySearchDrafts.projectId, projectId)
+        )
+      )
+      .limit(1);
+
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      projectId: r.projectId,
+      city: r.city,
+      state: r.state,
+      zipCode: r.zipCode,
+      propertyType: r.propertyType,
+      minBedrooms: r.minBedrooms,
+      minBathrooms: r.minBathrooms,
+      maxRent: r.maxRent,
+      maxDaysListed: r.maxDaysListed,
+      listingStatus: r.listingStatus,
+      submitted: r.submitted,
+      lastSearchAt: r.lastSearchAt,
+      resultsSnapshot: r.resultsSnapshot,
+      resultsCount: r.resultsCount,
+      queryFingerprint: r.queryFingerprint,
+    };
+  } catch {
+    console.warn("[repository] getPropertySearchDraft failed");
+    return null;
+  }
+}
+
+/**
+ * Upserts the user's property search draft for a specific project.
+ * organizationId and userId MUST come from requireOrganization().
+ * draft.projectId MUST be verified as belonging to organizationId.
+ */
+export async function upsertPropertySearchDraft(
+  organizationId: string,
+  userId: string,
+  draft: PropertySearchDraftView
+): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  try {
+    await db
+      .insert(propertySearchDrafts)
+      .values({
+        organizationId,
+        userId,
+        projectId: draft.projectId,
+        city: draft.city,
+        state: draft.state,
+        zipCode: draft.zipCode,
+        propertyType: draft.propertyType,
+        minBedrooms: draft.minBedrooms,
+        minBathrooms: draft.minBathrooms,
+        maxRent: draft.maxRent,
+        maxDaysListed: draft.maxDaysListed,
+        listingStatus: draft.listingStatus,
+        submitted: draft.submitted,
+        lastSearchAt: draft.lastSearchAt ?? null,
+        resultsSnapshot: draft.resultsSnapshot ?? null,
+        resultsCount: draft.resultsCount,
+        queryFingerprint: draft.queryFingerprint ?? null,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        // Unique index covers (organizationId, userId, projectId).
+        target: [
+          propertySearchDrafts.organizationId,
+          propertySearchDrafts.userId,
+          propertySearchDrafts.projectId,
+        ],
+        set: {
+          city: draft.city,
+          state: draft.state,
+          zipCode: draft.zipCode,
+          propertyType: draft.propertyType,
+          minBedrooms: draft.minBedrooms,
+          minBathrooms: draft.minBathrooms,
+          maxRent: draft.maxRent,
+          maxDaysListed: draft.maxDaysListed,
+          listingStatus: draft.listingStatus,
+          submitted: draft.submitted,
+          lastSearchAt: draft.lastSearchAt ?? null,
+          resultsSnapshot: draft.resultsSnapshot ?? null,
+          resultsCount: draft.resultsCount,
+          queryFingerprint: draft.queryFingerprint ?? null,
+          updatedAt: new Date(),
+        },
+      });
+    return true;
+  } catch {
+    console.warn("[repository] upsertPropertySearchDraft failed");
+    return false;
+  }
+}
+
+/**
+ * Deletes the user's property search draft for a specific project.
+ * organizationId and userId MUST come from requireOrganization().
+ * projectId MUST be a valid project ID belonging to organizationId.
+ */
+export async function deletePropertySearchDraft(
+  organizationId: string,
+  userId: string,
+  projectId: string
+): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  try {
+    await db
+      .delete(propertySearchDrafts)
+      .where(
+        and(
+          eq(propertySearchDrafts.organizationId, organizationId),
+          eq(propertySearchDrafts.userId, userId),
+          eq(propertySearchDrafts.projectId, projectId)
+        )
+      );
+    return true;
+  } catch {
+    console.warn("[repository] deletePropertySearchDraft failed");
+    return false;
+  }
+}
+
+// ─── Platform Settings (Back Office) ─────────────────────────────────────────
+
+/**
+ * Gets a platform-level setting by key.
+ * Caller MUST have verified requirePlatformOwner() before calling.
+ */
+export async function getPlatformSetting(
+  key: string
+): Promise<PlatformSettingView | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    const rows = await db
+      .select()
+      .from(platformSettings)
+      .where(eq(platformSettings.settingKey, key))
+      .limit(1);
+
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      settingKey: r.settingKey,
+      value: r.value,
+      enabled: r.enabled,
+      updatedByClerkUserId: r.updatedByClerkUserId,
+      updatedAt: r.updatedAt,
+    };
+  } catch {
+    console.warn("[repository] getPlatformSetting failed");
+    return null;
+  }
+}
+
+/**
+ * Upserts a platform-level setting.
+ * Caller MUST have verified requirePlatformOwner() before calling.
+ */
+export async function upsertPlatformSetting(
+  key: string,
+  value: string | null,
+  enabled: boolean,
+  actorClerkUserId: string
+): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  try {
+    await db
+      .insert(platformSettings)
+      .values({
+        settingKey: key,
+        value,
+        enabled,
+        updatedByClerkUserId: actorClerkUserId,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [platformSettings.settingKey],
+        set: {
+          value,
+          enabled,
+          updatedByClerkUserId: actorClerkUserId,
+          updatedAt: new Date(),
+        },
+      });
+    return true;
+  } catch {
+    console.warn("[repository] upsertPlatformSetting failed");
+    return false;
+  }
+}
+
+// ─── Audit Log (Back Office) ──────────────────────────────────────────────────
+
+export async function writeAuditLog(entry: {
+  actorClerkUserId: string | null;
+  actorEmail?: string | null;
+  eventType: string;
+  detail?: string | null;
+  organizationId?: string | null;
+}): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  try {
+    await db.insert(auditLog).values({
+      actorClerkUserId: entry.actorClerkUserId,
+      actorEmail: entry.actorEmail ?? null,
+      eventType: entry.eventType,
+      detail: entry.detail ?? null,
+      organizationId: entry.organizationId ?? null,
+    });
+  } catch {
+    // Audit log failure is non-fatal — log only
+    console.warn("[repository] writeAuditLog failed");
+  }
+}
+
+export async function listAuditLog(
+  limit = 100
+): Promise<AuditLogView[] | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    const rows = await db
+      .select()
+      .from(auditLog)
+      .orderBy(desc(auditLog.createdAt))
+      .limit(limit);
 
     return rows.map((r) => ({
       id: r.id,
-      address: r.address,
-      community: r.community,
-      bedrooms: r.bedrooms,
-      monthlyRent: r.monthlyRent,
-      availableDate: r.availableDate,
-      listingStatus: r.listingStatus,
-      provider: r.provider,
-      sourceUrl: r.sourceUrl,
+      actorClerkUserId: r.actorClerkUserId,
+      actorEmail: r.actorEmail,
+      eventType: r.eventType,
+      detail: r.detail,
+      organizationId: r.organizationId,
+      createdAt: r.createdAt,
     }));
   } catch {
-    console.warn("[repository] listPropertyCandidates failed");
+    console.warn("[repository] listAuditLog failed");
     return null;
   }
 }

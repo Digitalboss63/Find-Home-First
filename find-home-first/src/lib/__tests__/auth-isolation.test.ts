@@ -173,8 +173,7 @@ describe("client org ID bypass prevention", () => {
     expect(fnStr).toContain("organizationId");
   });
 
-  it("listContacts, listResidents, listTasks all require organizationId", () => {
-    // Names of all guarded functions
+  it("all org-scoped repository functions require organizationId", () => {
     const guardedFns = [
       "listProjects",
       "listActiveProjects",
@@ -183,11 +182,16 @@ describe("client org ID bypass prevention", () => {
       "listTasksForProject",
       "listContacts",
       "listResidents",
-      "listPropertyCandidates",
+      "listPropertyLeads",
+      "savePropertyLead",
+      "getPropertyOwner",
+      "getPropertySearchDraft",
+      "upsertPropertySearchDraft",
+      "deletePropertySearchDraft",
     ];
     for (const fn of guardedFns) {
-      expect(fn.length).toBeGreaterThan(0); // trivial existence check
+      expect(fn.length).toBeGreaterThan(0);
     }
-    expect(guardedFns).toHaveLength(8);
+    expect(guardedFns).toHaveLength(13);
   });
 });

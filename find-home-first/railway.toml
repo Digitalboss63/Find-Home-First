@@ -2,7 +2,8 @@
 buildCommand = "npm run build"
 
 [deploy]
-startCommand = "npx drizzle-kit migrate && npm start"
+startCommand = "npm start"
+preDeployCommand = "npm run db:migrate"
 healthcheckPath = "/"
 healthcheckTimeout = 60
 restartPolicyType = "on_failure"

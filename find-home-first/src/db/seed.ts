@@ -203,78 +203,85 @@ async function main() {
     }
   }
 
-  // ── Property candidates ──────────────────────────────────────────────────
+  // ── Property leads (owner-outreach pipeline) ─────────────────────────────
+  // These represent properties the operator is evaluating for leasing,
+  // not apartment listings for tenants.
 
-  const propSeeds = [
+  const leadSeeds = [
     {
       key: "412-maple-4b",
       address: "412 Maple Street, Unit 4B",
-      community: "Eastside",
+      city: "Atlanta",
+      state: "GA",
       bedrooms: 1,
       monthlyRent: "1250.00",
-      availableDate: "2026-08-01",
+      source: "manual" as const,
       listingStatus: "active",
+      acquisitionStage: "contacting_owner",
       notes: "Pet-friendly. Laundry in unit. Bus line 22 nearby.",
     },
     {
       key: "88-northview-2a",
       address: "88 Northview Blvd, Apt 2A",
-      community: "Northview",
+      city: "Atlanta",
+      state: "GA",
       bedrooms: 2,
       monthlyRent: "1650.00",
-      availableDate: "2026-08-15",
+      source: "manual" as const,
       listingStatus: "active",
+      acquisitionStage: "lead_identified",
       notes: "Elevator building. Near elementary school and transit.",
     },
     {
       key: "301-central-r12",
       address: "301 Central Ave, Room 12",
-      community: "Downtown",
+      city: "Atlanta",
+      state: "GA",
       bedrooms: 0,
       monthlyRent: "750.00",
-      availableDate: "2026-07-28",
+      source: "manual" as const,
       listingStatus: "active",
+      acquisitionStage: "lead_identified",
       notes: "SRO. Shared kitchen. Utilities included.",
     },
     {
       key: "19-oak-1c",
       address: "19 Oak Lane, Unit 1C",
-      community: "Westpark",
+      city: "Atlanta",
+      state: "GA",
       bedrooms: 1,
       monthlyRent: "1100.00",
-      availableDate: "2026-09-01",
+      source: "manual" as const,
       listingStatus: "active",
+      acquisitionStage: "lease_executed",
       notes: "Ground floor. ADA compliant. Senior-friendly building.",
     },
   ] as const;
 
-  const propCandidateIds: Record<string, string> = {};
-
-  for (const seed of propSeeds) {
+  for (const seed of leadSeeds) {
     const existing = await db
       .select()
-      .from(schema.propertyCandidates)
-      .where(eq(schema.propertyCandidates.address, seed.address))
+      .from(schema.propertyLeads)
+      .where(eq(schema.propertyLeads.address, seed.address))
       .limit(1);
     if (existing.length === 0) {
-      const [p] = await db
-        .insert(schema.propertyCandidates)
+      await db
+        .insert(schema.propertyLeads)
         .values({
           organizationId: orgId,
-          provider: "manual",
+          source: seed.source,
           address: seed.address,
-          community: seed.community,
+          city: seed.city,
+          state: seed.state,
           bedrooms: seed.bedrooms,
           monthlyRent: seed.monthlyRent,
-          availableDate: seed.availableDate,
           listingStatus: seed.listingStatus,
-        })
-        .returning();
-      propCandidateIds[seed.key] = p.id;
-      console.log("  ✔ Property candidate created:", seed.address);
+          acquisitionStage: seed.acquisitionStage,
+          notes: seed.notes,
+        });
+      console.log("  ✔ Property lead created:", seed.address);
     } else {
-      propCandidateIds[seed.key] = existing[0].id;
-      console.log("  ↩ Property candidate already exists:", seed.address);
+      console.log("  ↩ Property lead already exists:", seed.address);
     }
   }
 
