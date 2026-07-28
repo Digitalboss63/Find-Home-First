@@ -557,3 +557,81 @@ export const auditLog = pgTable(
     index("audit_log_created_idx").on(t.createdAt),
   ]
 );
+
+// ─── Market Research ──────────────────────────────────────────────────────────
+
+export const projectMarketResearch = pgTable(
+  "project_market_research",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+
+    // Section 2: Housing Demand
+    targetPopulationSize: text("target_population_size"),
+    referralOrgs: text("referral_orgs"),
+    expectedResidentsPerMonth: text("expected_residents_per_month"),
+    demandEvidenceNotes: text("demand_evidence_notes"),
+    demandRating: text("demand_rating"),
+
+    // Section 3: Funding & Revenue
+    fundingSource: text("funding_source"),
+    expectedPaymentPerResident: text("expected_payment_per_resident"),
+    expectedResidentContribution: text("expected_resident_contribution"),
+    expectedOccupancy: text("expected_occupancy"),
+    estimatedMonthlyRevenue: text("estimated_monthly_revenue"),
+    fundingNotes: text("funding_notes"),
+
+    // Section 4: Property Economics
+    targetPropertyType: text("target_property_type"),
+    minimumBedrooms: text("minimum_bedrooms"),
+    maxAcceptableLease: text("max_acceptable_lease"),
+    estimatedUtilities: text("estimated_utilities"),
+    estimatedFurnishingCost: text("estimated_furnishing_cost"),
+    expectedPrivateRoomCapacity: text("expected_private_room_capacity"),
+
+    // Section 5: Property Supply
+    estimatedRentalInventory: text("estimated_rental_inventory"),
+    typicalLocalRent: text("typical_local_rent"),
+    avgDaysListed: text("avg_days_listed"),
+    tiredOwnerIndicators: text("tired_owner_indicators"),
+    landlordOutreachNotes: text("landlord_outreach_notes"),
+    supplySourceLinks: text("supply_source_links"),
+
+    // Section 6: Location Suitability
+    transportationAccess: text("transportation_access"),
+    vaMedicalServices: text("va_medical_services"),
+    groceryEssentialServices: text("grocery_essential_services"),
+    referralPartnerProximity: text("referral_partner_proximity"),
+    zoningConcerns: text("zoning_concerns"),
+    neighborhoodConcerns: text("neighborhood_concerns"),
+    locationNotes: text("location_notes"),
+
+    // Section 7: Risks & Blockers
+    riskFundingUncertainty: boolean("risk_funding_uncertainty").notNull().default(false),
+    riskInsufficientSupply: boolean("risk_insufficient_supply").notNull().default(false),
+    riskRentTooHigh: boolean("risk_rent_too_high").notNull().default(false),
+    riskRegulatoryIssue: boolean("risk_regulatory_issue").notNull().default(false),
+    riskWeakReferralPipeline: boolean("risk_weak_referral_pipeline").notNull().default(false),
+    riskOther: boolean("risk_other").notNull().default(false),
+    riskMitigationNotes: text("risk_mitigation_notes"),
+
+    // Hold state
+    holdReason: text("hold_reason"),
+    // Additional costs for margin calculation
+    otherMonthlyCosts: text("other_monthly_costs"),
+
+    decisionStatus: text("decision_status"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("market_research_project_idx").on(t.projectId),
+    index("market_research_org_idx").on(t.organizationId),
+  ]
+);

@@ -1,0 +1,53 @@
+-- Find Home First — Market Research workspace
+-- Safe: CREATE TABLE IF NOT EXISTS, CREATE INDEX IF NOT EXISTS only. No destructive statements.
+
+CREATE TABLE IF NOT EXISTS "project_market_research" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+  "project_id" uuid NOT NULL REFERENCES "projects"("id") ON DELETE CASCADE,
+  "target_population_size" text,
+  "referral_orgs" text,
+  "expected_residents_per_month" text,
+  "demand_evidence_notes" text,
+  "demand_rating" text,
+  "funding_source" text,
+  "expected_payment_per_resident" text,
+  "expected_resident_contribution" text,
+  "expected_occupancy" text,
+  "estimated_monthly_revenue" text,
+  "funding_notes" text,
+  "target_property_type" text,
+  "minimum_bedrooms" text,
+  "max_acceptable_lease" text,
+  "estimated_utilities" text,
+  "estimated_furnishing_cost" text,
+  "expected_private_room_capacity" text,
+  "estimated_rental_inventory" text,
+  "typical_local_rent" text,
+  "avg_days_listed" text,
+  "tired_owner_indicators" text,
+  "landlord_outreach_notes" text,
+  "supply_source_links" text,
+  "transportation_access" text,
+  "va_medical_services" text,
+  "grocery_essential_services" text,
+  "referral_partner_proximity" text,
+  "zoning_concerns" text,
+  "neighborhood_concerns" text,
+  "location_notes" text,
+  "risk_funding_uncertainty" boolean NOT NULL DEFAULT false,
+  "risk_insufficient_supply" boolean NOT NULL DEFAULT false,
+  "risk_rent_too_high" boolean NOT NULL DEFAULT false,
+  "risk_regulatory_issue" boolean NOT NULL DEFAULT false,
+  "risk_weak_referral_pipeline" boolean NOT NULL DEFAULT false,
+  "risk_other" boolean NOT NULL DEFAULT false,
+  "risk_mitigation_notes" text,
+  "hold_reason" text,
+  "other_monthly_costs" text,
+  "decision_status" text,
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "updated_at" timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "market_research_project_idx" ON "project_market_research"("project_id");
+CREATE INDEX IF NOT EXISTS "market_research_org_idx" ON "project_market_research"("organization_id");

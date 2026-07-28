@@ -1,16 +1,5 @@
 /**
  * /projects/[id] — Project workspace
- *
- * Data source: PostgreSQL via repository when DATABASE_URL is set,
- * otherwise falls back to src/demo/data.ts.
- *
- * Required content per GUIDED_WORKSPACE_UI_SPEC.md:
- * - Project name, community, resident, target move-in
- * - Blocker alert (conditional)
- * - Five-stage placement journey with current stage marked
- * - Stage notes for completed and current stages
- * - Tasks for this project (open and completed)
- * - Back link to /projects
  */
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -24,6 +13,14 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params;
+  const demo = DEMO_PROJECTS.find((p) => p.id === id);
+  return { title: demo?.name ?? "Project" };
+}
+
+export const dynamic = "force-dynamic";
+
 // ── Demo adapters ──────────────────────────────────────────────────────────────
 
 function demoProjectView(id: string) {
@@ -34,9 +31,13 @@ function demoProjectView(id: string) {
     name: p.name,
     community: p.community,
     currentStage: p.currentStage as string,
+    currentStatus: "researching_city",
     targetMoveIn: p.targetMoveIn as string | null,
     blocker: p.blocker ?? null,
+    blockerReason: null as string | null,
+    nextAction: null as string | null,
     residentName: p.residentName as string | null,
+    groupStatus: "active" as const,
   };
 }
 
@@ -49,18 +50,104 @@ function demoTaskViews(projectId: string) {
   }));
 }
 
-// ── Metadata ──────────────────────────────────────────────────────────────────
+// ── Stage Stepper ─────────────────────────────────────────────────────────────
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { id } = await params;
+function StageStepper({ currentStage }: { currentStage: string }) {
+  const currentIdx = STAGES.findIndex((s) => s.key === currentStage);
 
-  // Try demo first for metadata (no auth required for metadata)
-  const demo = DEMO_PROJECTS.find((p) => p.id === id);
-  return { title: demo?.name ?? "Project" };
+  return (
+    <ol
+      aria-label="Placement journey stages"
+      style={{
+        listStyle: "none",
+        padding: 0,
+        margin: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: "0",
+      }}
+    >
+      {STAGES.map((stage, i) => {
+        const done = i < currentIdx;
+        const active = i === currentIdx;
+        return (
+          <li
+            key={stage.key}
+            aria-current={active ? "step" : undefined}
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "0.875rem",
+              padding: "0.75rem 0",
+              borderBottom: i < STAGES.length - 1 ? "1px solid var(--color-border)" : undefined,
+            }}
+          >
+            {/* Step indicator */}
+            <div
+              style={{
+                width: "1.75rem",
+                height: "1.75rem",
+                borderRadius: "50%",
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "0.75rem",
+                fontWeight: 700,
+                backgroundColor: done ? "#16a34a" : active ? "var(--color-action)" : "var(--color-surface-soft)",
+                color: done || active ? "#fff" : "var(--color-text)",
+                opacity: done || active ? 1 : 0.5,
+              }}
+            >
+              {done ? "✓" : i + 1}
+            </div>
+            {/* Stage info */}
+            <div>
+              <p
+                style={{
+                  fontSize: "0.875rem",
+                  fontWeight: active ? 700 : done ? 600 : 500,
+                  margin: 0,
+                  color: done ? "#166534" : active ? "var(--color-primary)" : "var(--color-text)",
+                  opacity: active || done ? 1 : 0.55,
+                }}
+              >
+                {stage.label}
+                {active && (
+                  <span
+                    style={{
+                      marginLeft: "0.5rem",
+                      fontSize: "0.65rem",
+                      fontWeight: 700,
+                      color: "var(--color-action)",
+                      backgroundColor: "#EEF2FF",
+                      padding: "0.1rem 0.4rem",
+                      borderRadius: "9999px",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    Current
+                  </span>
+                )}
+              </p>
+              <p
+                style={{
+                  fontSize: "0.8rem",
+                  color: "var(--color-text)",
+                  opacity: active || done ? 0.7 : 0.4,
+                  margin: "0.2rem 0 0",
+                }}
+              >
+                {stage.description}
+              </p>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
-
-// No generateStaticParams — dynamic rendering required for DB-backed pages.
-export const dynamic = "force-dynamic";
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 
@@ -68,25 +155,27 @@ export default async function ProjectPage({ params }: Props) {
   const { id } = await params;
   const { organizationId } = await requireOrganization();
 
-  // Attempt DB lookup
   const dbProject = await getProjectById(id, organizationId);
   const dbTasks = dbProject ? await listTasksForProject(id, organizationId) : null;
 
   const usingDemo = isDemoAllowed() && dbProject === null;
+  if (!usingDemo && dbProject === null) notFound();
 
-  if (!usingDemo && dbProject === null) {
-    notFound();
-  }
-
-  const project = usingDemo ? demoProjectView(id) : {
-    id: dbProject!.id,
-    name: dbProject!.name,
-    community: dbProject!.community,
-    currentStage: dbProject!.currentStage,
-    targetMoveIn: dbProject!.targetMoveIn,
-    blocker: dbProject!.blocker,
-    residentName: dbProject!.residentName,
-  };
+  const project = usingDemo
+    ? demoProjectView(id)
+    : {
+        id: dbProject!.id,
+        name: dbProject!.name,
+        community: dbProject!.community,
+        currentStage: dbProject!.currentStage,
+        currentStatus: dbProject!.currentStatus,
+        targetMoveIn: dbProject!.targetMoveIn,
+        blocker: dbProject!.blocker,
+        blockerReason: dbProject!.blockerReason,
+        nextAction: dbProject!.nextAction,
+        residentName: dbProject!.residentName,
+        groupStatus: dbProject!.groupStatus,
+      };
 
   if (!project) notFound();
 
@@ -99,77 +188,229 @@ export default async function ProjectPage({ params }: Props) {
         status: t.status,
       }));
 
-  const currentStageIndex = STAGES.findIndex(
-    (s) => s.key === project.currentStage
-  );
   const openTasks = allTasks.filter((t) => t.status !== "completed");
   const completedTasks = allTasks.filter((t) => t.status === "completed");
 
+  const isResearchStage = project.currentStage === "research";
+
   return (
-    <div>
-      <Link href="/projects">← All Projects</Link>
+    <div style={{ maxWidth: "48rem", margin: "0 auto", padding: "2rem 1.5rem" }}>
+      {/* Back link */}
+      <div style={{ marginBottom: "1.5rem" }}>
+        <Link
+          href="/projects"
+          style={{ fontSize: "0.875rem", color: "var(--color-action)", textDecoration: "none" }}
+        >
+          ← All Projects
+        </Link>
+      </div>
 
-      <h1>{project.name}</h1>
-      <p>Community: {project.community}</p>
-      {project.residentName && <p>Resident: {project.residentName}</p>}
-      {project.targetMoveIn && <p>Target move-in: {project.targetMoveIn}</p>}
+      {/* Project header */}
+      <div style={{ marginBottom: "1.5rem" }}>
+        <h1
+          style={{
+            fontSize: "1.5rem",
+            fontWeight: 700,
+            color: "var(--color-primary)",
+            margin: "0 0 0.25rem",
+          }}
+        >
+          {project.name}
+        </h1>
+        <p style={{ fontSize: "0.9rem", color: "var(--color-text)", opacity: 0.6, margin: 0 }}>
+          {project.community}
+          {project.residentName ? ` · ${project.residentName}` : ""}
+          {project.targetMoveIn ? ` · Target move-in: ${project.targetMoveIn}` : ""}
+        </p>
+      </div>
 
-      {/* Blocker alert — conditional */}
+      {/* Blocker alert */}
       {project.blocker && (
-        <div role="alert" aria-live="polite">
-          <p>Blocker: {project.blocker}</p>
+        <div
+          role="alert"
+          aria-live="polite"
+          style={{
+            backgroundColor: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: "0.75rem",
+            padding: "1rem 1.25rem",
+            marginBottom: "1.25rem",
+          }}
+        >
+          <p style={{ fontWeight: 600, color: "#991B1B", margin: "0 0 0.25rem", fontSize: "0.875rem" }}>
+            Blocker: {project.blocker}
+          </p>
+          {project.blockerReason && (
+            <p style={{ color: "#7F1D1D", fontSize: "0.825rem", margin: 0 }}>{project.blockerReason}</p>
+          )}
         </div>
       )}
 
-      {/* Five-stage placement journey */}
-      <section aria-labelledby="journey-heading">
-        <h2 id="journey-heading">Placement Journey</h2>
-        <ol aria-label="Placement journey stages">
-          {STAGES.map((stage, i) => {
-            const done = i < currentStageIndex;
-            const active = i === currentStageIndex;
-            return (
-              <li key={stage.key} aria-current={active ? "step" : undefined}>
-                <strong>{stage.label}</strong>
-                {done && " (completed)"}
-                {active && " (current)"}
-                <span> — {stage.description}</span>
-              </li>
-            );
-          })}
-        </ol>
+      {/* Next action */}
+      {project.nextAction && (
+        <div
+          style={{
+            backgroundColor: "#EFF6FF",
+            border: "1px solid #BFDBFE",
+            borderRadius: "0.75rem",
+            padding: "0.875rem 1.25rem",
+            marginBottom: "1.25rem",
+          }}
+        >
+          <p style={{ fontSize: "0.75rem", fontWeight: 600, color: "#1E40AF", margin: "0 0 0.2rem", opacity: 0.7 }}>
+            NEXT ACTION
+          </p>
+          <p style={{ fontSize: "0.875rem", color: "#1E3A8A", margin: 0 }}>{project.nextAction}</p>
+        </div>
+      )}
+
+      {/* Research CTA */}
+      {isResearchStage && (
+        <div
+          style={{
+            backgroundColor: "var(--color-surface-soft)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "0.75rem",
+            padding: "1.25rem",
+            marginBottom: "1.25rem",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "1rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <p style={{ fontWeight: 600, color: "var(--color-primary)", margin: "0 0 0.25rem", fontSize: "0.9rem" }}>
+              Market Research Workspace
+            </p>
+            <p style={{ fontSize: "0.8rem", color: "var(--color-text)", opacity: 0.65, margin: 0 }}>
+              Evaluate demand, funding, property economics, and supply to decide if this city is viable.
+            </p>
+          </div>
+          <Link
+            href={`/projects/${project.id}/research`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.375rem",
+              backgroundColor: "var(--color-action)",
+              color: "#fff",
+              textDecoration: "none",
+              padding: "0.625rem 1.25rem",
+              borderRadius: "0.5rem",
+              fontSize: "0.875rem",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Open Research →
+          </Link>
+        </div>
+      )}
+
+      {/* Placement journey */}
+      <section
+        aria-labelledby="journey-heading"
+        style={{
+          backgroundColor: "#fff",
+          border: "1px solid var(--color-border)",
+          borderRadius: "0.75rem",
+          padding: "1.25rem 1.5rem",
+          marginBottom: "1.25rem",
+        }}
+      >
+        <h2
+          id="journey-heading"
+          style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--color-primary)", margin: "0 0 1rem" }}
+        >
+          Placement Journey
+        </h2>
+        <StageStepper currentStage={project.currentStage} />
       </section>
 
       {/* Tasks */}
-      <section aria-labelledby="tasks-heading">
-        <h2 id="tasks-heading">Tasks</h2>
-        <Link href="/tasks">All tasks</Link>
+      <section
+        aria-labelledby="tasks-heading"
+        style={{
+          backgroundColor: "#fff",
+          border: "1px solid var(--color-border)",
+          borderRadius: "0.75rem",
+          padding: "1.25rem 1.5rem",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "1rem",
+          }}
+        >
+          <h2
+            id="tasks-heading"
+            style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--color-primary)", margin: 0 }}
+          >
+            Tasks
+          </h2>
+          <Link
+            href="/tasks"
+            style={{ fontSize: "0.8rem", color: "var(--color-action)", textDecoration: "none" }}
+          >
+            All tasks →
+          </Link>
+        </div>
 
         {openTasks.length === 0 && completedTasks.length === 0 ? (
-          <p>No tasks for this project.</p>
+          <p style={{ fontSize: "0.875rem", color: "var(--color-text)", opacity: 0.5, margin: 0 }}>
+            No tasks for this project.
+          </p>
         ) : (
           <>
             {openTasks.length > 0 && (
-              <>
-                <h3>Open</h3>
-                <ul>
+              <div style={{ marginBottom: completedTasks.length > 0 ? "1rem" : 0 }}>
+                <p style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-text)", opacity: 0.5, margin: "0 0 0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Open ({openTasks.length})
+                </p>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                   {openTasks.map((task) => (
-                    <li key={task.id}>
-                      {task.title} — due {task.dueDate}
+                    <li
+                      key={task.id}
+                      style={{
+                        fontSize: "0.875rem",
+                        color: "var(--color-text)",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "0.5rem 0",
+                        borderBottom: "1px solid var(--color-border)",
+                      }}
+                    >
+                      <span>{task.title}</span>
+                      {task.dueDate && (
+                        <span style={{ fontSize: "0.75rem", opacity: 0.55 }}>Due {task.dueDate}</span>
+                      )}
                     </li>
                   ))}
                 </ul>
-              </>
+              </div>
             )}
             {completedTasks.length > 0 && (
-              <>
-                <h3>Completed</h3>
-                <ul>
+              <div>
+                <p style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-text)", opacity: 0.5, margin: "0 0 0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Completed ({completedTasks.length})
+                </p>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "0.375rem" }}>
                   {completedTasks.map((task) => (
-                    <li key={task.id}>{task.title}</li>
+                    <li
+                      key={task.id}
+                      style={{ fontSize: "0.875rem", color: "var(--color-text)", opacity: 0.5, textDecoration: "line-through" }}
+                    >
+                      {task.title}
+                    </li>
                   ))}
                 </ul>
-              </>
+              </div>
             )}
           </>
         )}

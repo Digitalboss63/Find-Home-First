@@ -22,6 +22,7 @@ import {
   propertySearchDrafts,
   platformSettings,
   auditLog,
+  projectMarketResearch,
 } from "@/db/schema";
 import { statusToStageKey } from "./stages";
 
@@ -1027,5 +1028,153 @@ export async function listAuditLog(
   } catch {
     console.warn("[repository] listAuditLog failed");
     return null;
+  }
+}
+
+// ─── Market Research ──────────────────────────────────────────────────────────
+
+export interface MarketResearchView {
+  id: string;
+  projectId: string;
+  targetPopulationSize: string | null;
+  referralOrgs: string | null;
+  expectedResidentsPerMonth: string | null;
+  demandEvidenceNotes: string | null;
+  demandRating: string | null;
+  fundingSource: string | null;
+  expectedPaymentPerResident: string | null;
+  expectedResidentContribution: string | null;
+  expectedOccupancy: string | null;
+  estimatedMonthlyRevenue: string | null;
+  fundingNotes: string | null;
+  targetPropertyType: string | null;
+  minimumBedrooms: string | null;
+  maxAcceptableLease: string | null;
+  estimatedUtilities: string | null;
+  estimatedFurnishingCost: string | null;
+  expectedPrivateRoomCapacity: string | null;
+  estimatedRentalInventory: string | null;
+  typicalLocalRent: string | null;
+  avgDaysListed: string | null;
+  tiredOwnerIndicators: string | null;
+  landlordOutreachNotes: string | null;
+  supplySourceLinks: string | null;
+  transportationAccess: string | null;
+  vaMedicalServices: string | null;
+  groceryEssentialServices: string | null;
+  referralPartnerProximity: string | null;
+  zoningConcerns: string | null;
+  neighborhoodConcerns: string | null;
+  locationNotes: string | null;
+  riskFundingUncertainty: boolean;
+  riskInsufficientSupply: boolean;
+  riskRentTooHigh: boolean;
+  riskRegulatoryIssue: boolean;
+  riskWeakReferralPipeline: boolean;
+  riskOther: boolean;
+  riskMitigationNotes: string | null;
+  holdReason: string | null;
+  otherMonthlyCosts: string | null;
+  decisionStatus: string | null;
+  updatedAt: Date;
+}
+
+export async function getMarketResearch(
+  projectId: string,
+  organizationId: string
+): Promise<MarketResearchView | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    const rows = await db
+      .select()
+      .from(projectMarketResearch)
+      .where(
+        and(
+          eq(projectMarketResearch.projectId, projectId),
+          eq(projectMarketResearch.organizationId, organizationId)
+        )
+      )
+      .limit(1);
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      id: r.id,
+      projectId: r.projectId,
+      targetPopulationSize: r.targetPopulationSize,
+      referralOrgs: r.referralOrgs,
+      expectedResidentsPerMonth: r.expectedResidentsPerMonth,
+      demandEvidenceNotes: r.demandEvidenceNotes,
+      demandRating: r.demandRating,
+      fundingSource: r.fundingSource,
+      expectedPaymentPerResident: r.expectedPaymentPerResident,
+      expectedResidentContribution: r.expectedResidentContribution,
+      expectedOccupancy: r.expectedOccupancy,
+      estimatedMonthlyRevenue: r.estimatedMonthlyRevenue,
+      fundingNotes: r.fundingNotes,
+      targetPropertyType: r.targetPropertyType,
+      minimumBedrooms: r.minimumBedrooms,
+      maxAcceptableLease: r.maxAcceptableLease,
+      estimatedUtilities: r.estimatedUtilities,
+      estimatedFurnishingCost: r.estimatedFurnishingCost,
+      expectedPrivateRoomCapacity: r.expectedPrivateRoomCapacity,
+      estimatedRentalInventory: r.estimatedRentalInventory,
+      typicalLocalRent: r.typicalLocalRent,
+      avgDaysListed: r.avgDaysListed,
+      tiredOwnerIndicators: r.tiredOwnerIndicators,
+      landlordOutreachNotes: r.landlordOutreachNotes,
+      supplySourceLinks: r.supplySourceLinks,
+      transportationAccess: r.transportationAccess,
+      vaMedicalServices: r.vaMedicalServices,
+      groceryEssentialServices: r.groceryEssentialServices,
+      referralPartnerProximity: r.referralPartnerProximity,
+      zoningConcerns: r.zoningConcerns,
+      neighborhoodConcerns: r.neighborhoodConcerns,
+      locationNotes: r.locationNotes,
+      riskFundingUncertainty: r.riskFundingUncertainty,
+      riskInsufficientSupply: r.riskInsufficientSupply,
+      riskRentTooHigh: r.riskRentTooHigh,
+      riskRegulatoryIssue: r.riskRegulatoryIssue,
+      riskWeakReferralPipeline: r.riskWeakReferralPipeline,
+      riskOther: r.riskOther,
+      riskMitigationNotes: r.riskMitigationNotes,
+      holdReason: r.holdReason,
+      otherMonthlyCosts: r.otherMonthlyCosts,
+      decisionStatus: r.decisionStatus,
+      updatedAt: r.updatedAt,
+    };
+  } catch {
+    console.warn("[repository] getMarketResearch failed");
+    return null;
+  }
+}
+
+export async function upsertMarketResearch(
+  projectId: string,
+  organizationId: string,
+  data: Partial<Omit<MarketResearchView, "id" | "projectId" | "updatedAt">>
+): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  try {
+    await db
+      .insert(projectMarketResearch)
+      .values({
+        projectId,
+        organizationId,
+        ...data,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: projectMarketResearch.projectId,
+        set: {
+          ...data,
+          updatedAt: new Date(),
+        },
+      });
+    return true;
+  } catch {
+    console.warn("[repository] upsertMarketResearch failed");
+    return false;
   }
 }

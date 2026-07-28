@@ -95,3 +95,38 @@ describe("Migration safety — foundation-correction.sql", () => {
     expect(migrationSql).toMatch(/"project_id" uuid NOT NULL/i);
   });
 });
+
+describe("Migration safety — 0003_market-research.sql", () => {
+  it("file exists", () => {
+    const drizzleDir = join(process.cwd(), "drizzle");
+    const files = readdirSync(drizzleDir);
+    const file = files.find((f) => f.includes("market-research") && f.endsWith(".sql"));
+    expect(file).toBeTruthy();
+  });
+
+  it("contains CREATE TABLE IF NOT EXISTS project_market_research", () => {
+    const drizzleDir = join(process.cwd(), "drizzle");
+    const sql = readFileSync(join(drizzleDir, "0003_market-research.sql"), "utf-8");
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS "project_market_research"/i);
+  });
+
+  it("contains UNIQUE INDEX for project_id", () => {
+    const drizzleDir = join(process.cwd(), "drizzle");
+    const sql = readFileSync(join(drizzleDir, "0003_market-research.sql"), "utf-8");
+    expect(sql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS/i);
+    expect(sql).toMatch(/"project_id"/i);
+  });
+
+  it("contains no DROP TABLE statements", () => {
+    const drizzleDir = join(process.cwd(), "drizzle");
+    const sql = readFileSync(join(drizzleDir, "0003_market-research.sql"), "utf-8");
+    expect(sql).not.toMatch(/DROP TABLE/i);
+  });
+
+  it("contains organization_id NOT NULL with CASCADE", () => {
+    const drizzleDir = join(process.cwd(), "drizzle");
+    const sql = readFileSync(join(drizzleDir, "0003_market-research.sql"), "utf-8");
+    expect(sql).toMatch(/"organization_id" uuid NOT NULL/i);
+    expect(sql).toMatch(/ON DELETE CASCADE/i);
+  });
+});
