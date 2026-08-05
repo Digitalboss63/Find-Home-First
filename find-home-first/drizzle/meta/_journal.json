@@ -1,41 +1,41 @@
 {
-    "version":  "7",
-    "dialect":  "postgresql",
-    "entries":  [
-                    {
-                        "idx":  0,
-                        "version":  "7",
-                        "when":  1784741196978,
-                        "tag":  "0000_graceful_tarot",
-                        "breakpoints":  true
-                    },
-                    {
-                        "idx":  1,
-                        "version":  "7",
-                        "when":  1784837333441,
-                        "tag":  "0001_overrated_arachne",
-                        "breakpoints":  true
-                    },
-                    {
-                        "idx":  2,
-                        "version":  "7",
-                        "when":  1785023220810,
-                        "tag":  "0002_foundation-correction",
-                        "breakpoints":  true
-                    },
-                    {
-                        "idx":  3,
-                        "version":  "7",
-                        "when":  1785100000000,
-                        "tag":  "0003_market-research",
-                        "breakpoints":  true
-                    },
-                    {
-                        "idx":  4,
-                        "version":  "7",
-                        "when":  1785200000000,
-                        "tag":  "0004_market-intelligence",
-                        "breakpoints":  true
-                    }
-                ]
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1784741196978,
+      "tag": "0000_graceful_tarot",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784837333441,
+      "tag": "0001_overrated_arachne",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785023220810,
+      "tag": "0002_foundation-correction",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785100000000,
+      "tag": "0003_market-research",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785200000000,
+      "tag": "0004_market-intelligence",
+      "breakpoints": true
+    }
+  ]
 }
