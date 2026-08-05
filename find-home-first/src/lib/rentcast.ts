@@ -53,18 +53,49 @@ export interface RentCastOwner {
   mailingDiffersFromProperty: boolean;
 }
 
+/**
+ * RentCast /listings/rental/long-term query parameters.
+ *
+ * Range format: RentCast uses colon-separated range notation for numeric filters.
+ *   bedrooms=3:*   means "3 or more" (minimum 3)
+ *   bathrooms=2:*  means "2 or more" (minimum 2)
+ *   price=*:1800   means "up to $1,800" (maximum 1800)
+ *   daysOld=*:45   means "listed within 45 days" (maximum 45)
+ *
+ * These are constructed in searchRentalListings from the UI fields:
+ *   minBedrooms  → bedrooms=VALUE:*
+ *   minBathrooms → bathrooms=VALUE:*
+ *   maxRent      → price=*:VALUE
+ *   maxDaysListed → daysOld=*:VALUE
+ *
+ * status: "Active" | "Inactive" — omitting defaults to Active on RentCast's side.
+ *   We always send the status explicitly to avoid ambiguity.
+ *
+ * latitude/longitude/radius are reserved for Phase 2 map radius searches.
+ */
 export interface RentCastSearchParams {
   city?: string;
   state?: string;
   zipCode?: string;
   propertyType?: string;
-  bedrooms?: number;
-  bathrooms?: number;
-  maxPrice?: number;
-  daysOld?: number;
+  /** Minimum bedrooms — sent as bedrooms=VALUE:* */
+  minBedrooms?: number;
+  /** Minimum bathrooms — sent as bathrooms=VALUE:* */
+  minBathrooms?: number;
+  /** Maximum monthly rent — sent as price=*:VALUE */
+  maxRent?: number;
+  /** Maximum days listed — sent as daysOld=*:VALUE */
+  maxDaysOld?: number;
+  /** "Active" | "Inactive" — always sent explicitly */
   status?: string;
   limit?: number;
   offset?: number;
+  /** Phase 2 map: latitude for radius search */
+  latitude?: number;
+  /** Phase 2 map: longitude for radius search */
+  longitude?: number;
+  /** Phase 2 map: radius in miles */
+  radius?: number;
 }
 
 export interface RentCastResult {
@@ -162,18 +193,28 @@ export async function searchRentalListings(
   params: RentCastSearchParams
 ): Promise<RentCastResult> {
   try {
+    // Build params using RentCast's range notation.
+    // rentcastFetch calls url.searchParams.set(k, String(v)) for each non-undefined entry.
+    //
+    // Range format: "VALUE:*" = at least VALUE, "*:VALUE" = at most VALUE.
+    // Plain "VALUE" would mean exact match — incorrect for min/max filters.
     const rawParams: Record<string, string | number | undefined> = {
-      city: params.city,
-      state: params.state,
-      zipCode: params.zipCode,
+      city:         params.city,
+      state:        params.state,
+      zipCode:      params.zipCode,
       propertyType: params.propertyType,
-      bedrooms: params.bedrooms,
-      bathrooms: params.bathrooms,
-      maxPrice: params.maxPrice,
-      daysOld: params.daysOld,
-      status: params.status ?? "Active",
-      limit: params.limit ?? 25,
-      offset: params.offset ?? 0,
+      // Minimum bedrooms: bedrooms=VALUE:* (e.g. bedrooms=3:*)
+      bedrooms:     params.minBedrooms !== undefined ? `${params.minBedrooms}:*` : undefined,
+      // Minimum bathrooms: bathrooms=VALUE:* (e.g. bathrooms=2:*)
+      bathrooms:    params.minBathrooms !== undefined ? `${params.minBathrooms}:*` : undefined,
+      // Maximum rent: price=*:VALUE (e.g. price=*:1800) — NOT maxPrice
+      price:        params.maxRent !== undefined ? `*:${params.maxRent}` : undefined,
+      // Maximum days listed: daysOld=*:VALUE (e.g. daysOld=*:45)
+      daysOld:      params.maxDaysOld !== undefined ? `*:${params.maxDaysOld}` : undefined,
+      // Status: always sent explicitly. "Active" is the default but we never omit it.
+      status:       params.status,
+      limit:        params.limit ?? 25,
+      offset:       params.offset ?? 0,
     };
 
     const data = await rentcastFetch("/listings/rental/long-term", rawParams);

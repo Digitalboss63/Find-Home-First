@@ -7,14 +7,18 @@ import {
   useTransition,
   useCallback,
 } from "react";
-import type { PropertySearchDraftView } from "@/lib/repository";
+import type { PropertySearchDraftView, PropertyLeadView } from "@/lib/repository";
 import type { RentCastListing, RentCastOwner } from "@/lib/rentcast";
+import { scoreFromListing, enrichScoreWithOwner } from "@/lib/opportunity-score";
+import type { OpportunityResult } from "@/lib/opportunity-score";
 import {
   searchPropertiesAction,
   saveDraftAction,
   clearDraftAction,
   fetchOwnerAction,
   saveLeadAction,
+  linkOwnerToLeadAction,
+  updateLeadStageAction,
 } from "./actions";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -45,10 +49,35 @@ const BATHROOM_OPTIONS = [
   { value: "2", label: "2+" },
 ];
 
+// "Any status" is intentionally absent. RentCast omitting status defaults to
+// Active — we always send explicitly. Merging Active + Inactive would cost two
+// API calls and is deferred to a future phase.
 const STATUS_OPTIONS = [
   { value: "active", label: "Active listings" },
-  { value: "inactive", label: "Inactive / previously listed" },
-  { value: "", label: "Active or inactive" },
+  { value: "inactive", label: "Inactive listings" },
+];
+
+const MANUAL_SOURCES = [
+  { value: "zillow", label: "Zillow (manual entry)" },
+  { value: "apartments_com", label: "Apartments.com (manual entry)" },
+  { value: "realtor_com", label: "Realtor.com (manual entry)" },
+  { value: "craigslist", label: "Craigslist" },
+  { value: "facebook", label: "Facebook Marketplace" },
+  { value: "direct_owner", label: "Direct Owner Outreach" },
+  { value: "referral", label: "Referral" },
+  { value: "driving", label: "Driving for Dollars" },
+  { value: "other", label: "Other" },
+];
+
+const PIPELINE_STAGES = [
+  { value: "researching", label: "Researching" },
+  { value: "ready_for_outreach", label: "Ready for Outreach" },
+  { value: "contacted", label: "Contacted" },
+  { value: "follow_up", label: "Follow-up" },
+  { value: "interested", label: "Interested" },
+  { value: "negotiating", label: "Negotiating" },
+  { value: "agreement_signed", label: "Agreement Signed" },
+  { value: "not_interested", label: "Not Interested" },
 ];
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -104,14 +133,42 @@ function useDebounced<T>(fn: (val: T) => void, ms: number) {
   );
 }
 
+// ─── Score badge ──────────────────────────────────────────────────────────────
+
+function ScoreBadge({ result }: { result: OpportunityResult }) {
+  const availableSignals = result.signals.filter((s) => s.available && s.earned > 0).length;
+  return (
+    <div
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold"
+      style={{
+        backgroundColor: result.score >= 40 ? "var(--color-secondary)" : "var(--color-surface-soft)",
+        color: result.score >= 40 ? "#fff" : "var(--color-text)",
+        border: "1px solid var(--color-border)",
+      }}
+    >
+      Score: {result.score} / 100
+      {availableSignals > 0 && (
+        <span style={{ opacity: 0.75 }}>— {availableSignals} signal{availableSignals !== 1 ? "s" : ""}</span>
+      )}
+    </div>
+  );
+}
+
 // ─── Owner panel ──────────────────────────────────────────────────────────────
 
 function OwnerPanel({
   propertyId,
+  leadId,
+  projectId,
+  listing,
 }: {
   propertyId: string;
+  leadId: string | null;
+  projectId: string;
+  listing: RentCastListing;
 }) {
   const [owner, setOwner] = useState<RentCastOwner | null>(null);
+  const [enrichedScore, setEnrichedScore] = useState<OpportunityResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fetched, setFetched] = useState(false);
@@ -119,7 +176,7 @@ function OwnerPanel({
   async function loadOwner() {
     setLoading(true);
     setError(null);
-    const result = await fetchOwnerAction(propertyId);
+    const result = await fetchOwnerAction(propertyId, projectId);
     setLoading(false);
     setFetched(true);
     if (result.unconfigured) {
@@ -128,6 +185,16 @@ function OwnerPanel({
       setError(result.error);
     } else {
       setOwner(result.owner);
+      if (result.owner) {
+        const enriched = enrichScoreWithOwner(listing, result.owner);
+        setEnrichedScore(enriched);
+        // Sequence B: link owner to lead if we have both IDs (lead was saved first)
+        if (leadId && result.ownerId) {
+          linkOwnerToLeadAction(leadId, result.ownerId, projectId).catch(() => {
+            // non-fatal — link failure does not block UI
+          });
+        }
+      }
     }
   }
 
@@ -172,13 +239,6 @@ function OwnerPanel({
     );
   }
 
-  // Compute opportunity indicators — presented as signals, not conclusions
-  const indicators: string[] = [];
-  if (owner.ownerOccupied === false) indicators.push("Non-owner-occupied");
-  if (owner.mailingDiffersFromProperty)
-    indicators.push("Mailing address differs from property address");
-  if (owner.ownerType === "Individual") indicators.push("Individual owner");
-
   return (
     <div
       className="mt-3 rounded-lg p-3 text-xs space-y-1.5"
@@ -218,25 +278,24 @@ function OwnerPanel({
         </p>
       )}
 
-      {indicators.length > 0 && (
+      {enrichedScore && (
         <div className="mt-2 pt-2" style={{ borderTop: "1px solid var(--color-border)" }}>
-          <p
-            className="font-semibold text-xs mb-1"
-            style={{ color: "var(--color-secondary)" }}
-          >
-            Potential Owner Opportunity Indicators
-          </p>
+          <div className="flex items-center gap-2 mb-2">
+            <p className="font-semibold text-xs" style={{ color: "var(--color-secondary)" }}>
+              Opportunity Score
+            </p>
+            <ScoreBadge result={enrichedScore} />
+          </div>
           <ul className="space-y-0.5">
-            {indicators.map((ind) => (
+            {enrichedScore.signals.filter((s) => s.available && s.earned > 0).map((sig) => (
               <li
-                key={ind}
+                key={sig.key}
                 className="flex items-center gap-1.5"
                 style={{ color: "var(--color-text)", opacity: 0.8 }}
               >
-                <span aria-hidden="true" style={{ color: "var(--color-secondary)" }}>
-                  ●
-                </span>
-                {ind}
+                <span aria-hidden="true" style={{ color: "var(--color-secondary)" }}>●</span>
+                {sig.label}
+                {sig.value && <span style={{ opacity: 0.55 }}> ({sig.value})</span>}
               </li>
             ))}
           </ul>
@@ -255,10 +314,20 @@ function OwnerPanel({
 
 // ─── Listing card ─────────────────────────────────────────────────────────────
 
-function ListingCard({ listing }: { listing: RentCastListing }) {
+function ListingCard({
+  listing,
+  projectId,
+}: {
+  listing: RentCastListing;
+  projectId: string;
+}) {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [leadId, setLeadId] = useState<string | null>(null);
+
+  // Pre-enrichment opportunity score from listing data only
+  const preScore = useMemo(() => scoreFromListing(listing), [listing]);
 
   function handleSave() {
     startTransition(async () => {
@@ -282,12 +351,17 @@ function ListingCard({ listing }: { listing: RentCastListing }) {
         listingContact: listing.listedBy || undefined,
         listingPhone: listing.listedByPhone || undefined,
         listingEmail: listing.listedByEmail || undefined,
+        projectId,
+        opportunityScore: preScore.score,
+        opportunitySignals: JSON.stringify(preScore.signals),
       });
       setSaving(false);
       if (result.duplicate) {
         setSaveMsg("Already saved in your pipeline.");
+        if (result.leadId) setLeadId(result.leadId);
       } else if (result.ok) {
         setSaveMsg("Saved to your property leads.");
+        if (result.leadId) setLeadId(result.leadId);
       } else {
         setSaveMsg(result.error ?? "Could not save.");
       }
@@ -296,9 +370,7 @@ function ListingCard({ listing }: { listing: RentCastListing }) {
 
   const propertyLabel = [
     listing.propertyType,
-    listing.bedrooms != null
-      ? `${listing.bedrooms} BR`
-      : null,
+    listing.bedrooms != null ? `${listing.bedrooms} BR` : null,
     listing.bathrooms != null ? `${listing.bathrooms} BA` : null,
   ]
     .filter(Boolean)
@@ -347,6 +419,11 @@ function ListingCard({ listing }: { listing: RentCastListing }) {
               )}
             </p>
           </div>
+        </div>
+
+        {/* Pre-enrichment score badge */}
+        <div className="mb-3">
+          <ScoreBadge result={preScore} />
         </div>
 
         {/* Metadata grid */}
@@ -416,7 +493,12 @@ function ListingCard({ listing }: { listing: RentCastListing }) {
 
         {/* On-demand owner enrichment */}
         {listing.id && (
-          <OwnerPanel propertyId={listing.id} />
+          <OwnerPanel
+            propertyId={listing.id}
+            leadId={leadId}
+            projectId={projectId}
+            listing={listing}
+          />
         )}
       </div>
     </li>
@@ -425,16 +507,7 @@ function ListingCard({ listing }: { listing: RentCastListing }) {
 
 // ─── Manual property lead form ────────────────────────────────────────────────
 
-const MANUAL_SOURCES = [
-  { value: "zillow", label: "Zillow (manual)" },
-  { value: "craigslist", label: "Craigslist" },
-  { value: "facebook", label: "Facebook Marketplace" },
-  { value: "referral", label: "Referral" },
-  { value: "driving", label: "Driving for Dollars" },
-  { value: "other", label: "Other" },
-];
-
-function ManualLeadForm() {
+function ManualLeadForm({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
   const [source, setSource] = useState("zillow");
   const [sourceUrl, setSourceUrl] = useState("");
@@ -473,6 +546,7 @@ function ManualLeadForm() {
         listingPhone: ownerPhone.trim() || undefined,
         listingEmail: ownerEmail.trim() || undefined,
         notes: notes.trim() || undefined,
+        projectId,
       });
       if (result.duplicate) {
         setMsg({ ok: false, text: "This property is already saved in your pipeline." });
@@ -519,8 +593,8 @@ function ManualLeadForm() {
             className="px-5 py-5 bg-white space-y-4"
           >
             <p className="text-xs" style={{ color: "var(--color-text)", opacity: 0.55 }}>
-              Add a property lead from Zillow or any source manually.
-              Zillow is manual-only — no scraping.
+              Add a property lead from any source manually. Zillow and other portals
+              require manual entry — no scraping.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -642,13 +716,131 @@ function ManualLeadForm() {
   );
 }
 
+// ─── Saved Leads Panel ────────────────────────────────────────────────────────
+
+function SavedLeadsPanel({
+  leads,
+  projectId,
+}: {
+  leads: PropertyLeadView[];
+  projectId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [stageUpdates, setStageUpdates] = useState<Record<string, string>>({});
+  const [, startTransition] = useTransition();
+
+  if (leads.length === 0) return null;
+
+  function handleStageChange(leadId: string, newStage: string) {
+    setStageUpdates((prev) => ({ ...prev, [leadId]: newStage }));
+    startTransition(async () => {
+      await updateLeadStageAction(leadId, projectId, newStage);
+    });
+  }
+
+  return (
+    <section aria-labelledby="saved-leads-heading" className="mb-8">
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{ border: "1px solid var(--color-border)" }}
+      >
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="w-full flex items-center justify-between px-5 py-4 text-left"
+          style={{
+            backgroundColor: "var(--color-surface-soft)",
+            color: "var(--color-primary)",
+          }}
+          aria-expanded={open}
+          aria-controls="saved-leads-list"
+        >
+          <span className="font-semibold text-sm" id="saved-leads-heading">
+            Saved Property Leads ({leads.length})
+          </span>
+          <span aria-hidden="true">{open ? "▲" : "▼"}</span>
+        </button>
+
+        {open && (
+          <ul id="saved-leads-list" className="divide-y bg-white" style={{ borderTop: "1px solid var(--color-border)" }}>
+            {leads.map((lead) => {
+              const currentStage = stageUpdates[lead.id] ?? lead.acquisitionStage;
+              const stageLabel = PIPELINE_STAGES.find((s) => s.value === currentStage)?.label ?? currentStage;
+              return (
+                <li key={lead.id} className="px-5 py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium" style={{ color: "var(--color-primary)" }}>
+                        {lead.address}
+                      </p>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full"
+                          style={{
+                            backgroundColor: "var(--color-surface-soft)",
+                            border: "1px solid var(--color-border)",
+                            color: "var(--color-text)",
+                          }}
+                        >
+                          {lead.source}
+                        </span>
+                        {lead.daysOnMarket != null && (
+                          <span className="text-xs" style={{ color: "var(--color-text)", opacity: 0.55 }}>
+                            {lead.daysOnMarket} days on market
+                          </span>
+                        )}
+                        {lead.opportunityScore != null && (
+                          <span
+                            className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                            style={{
+                              backgroundColor: lead.opportunityScore >= 40 ? "var(--color-secondary)" : "var(--color-surface-soft)",
+                              color: lead.opportunityScore >= 40 ? "#fff" : "var(--color-text)",
+                              border: "1px solid var(--color-border)",
+                            }}
+                          >
+                            Score: {lead.opportunityScore}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="shrink-0">
+                      <label htmlFor={`stage-${lead.id}`} className="sr-only">Pipeline stage for {lead.address}</label>
+                      <select
+                        id={`stage-${lead.id}`}
+                        value={currentStage}
+                        onChange={(e) => handleStageChange(lead.id, e.target.value)}
+                        style={{ ...fieldStyle, width: "auto", fontSize: "0.75rem" }}
+                      >
+                        {PIPELINE_STAGES.map((s) => (
+                          <option key={s.value} value={s.value}>{s.label}</option>
+                        ))}
+                        {/* Show current stage if not in pipeline stages list */}
+                        {!PIPELINE_STAGES.find((s) => s.value === currentStage) && (
+                          <option value={currentStage}>{stageLabel}</option>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface Props {
   initialDraft: PropertySearchDraftView;
   savedLeadCount: number;
+  savedLeads: PropertyLeadView[];
   rentCastConfigured: boolean;
   isDemoMode: boolean;
+  projectId: string;
+  hasCompletedReport: boolean;
 }
 
 /** Parse the stored results snapshot back to RentCastListing[]. */
@@ -665,7 +857,10 @@ function parseSnapshot(snapshot: string | null): RentCastListing[] {
 export default function PropertySearchClient({
   initialDraft,
   savedLeadCount,
+  savedLeads,
   rentCastConfigured,
+  projectId,
+  hasCompletedReport,
 }: Props) {
   // ── Filter state — initialised from server-loaded draft ─────────────────
   const [city, setCity] = useState(initialDraft.city);
@@ -687,6 +882,7 @@ export default function PropertySearchClient({
   const [isSearching, startSearch] = useTransition();
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isPending, startTransition] = useTransition();
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // ── Draft helpers ────────────────────────────────────────────────────────
   function currentDraft(): PropertySearchDraftView {
@@ -752,18 +948,20 @@ export default function PropertySearchClient({
   }
 
   // ── Reset ────────────────────────────────────────────────────────────────
-  function handleReset() {
-    const hasSomething =
-      city || state || zipCode || propertyType || minBedrooms ||
-      minBathrooms || maxRent || maxDaysListed || submitted;
+  const hasSomething =
+    city || state || zipCode || propertyType || minBedrooms ||
+    minBathrooms || maxRent || maxDaysListed || submitted;
 
+  function handleResetRequest() {
     if (hasSomething) {
-      const confirmed = window.confirm(
-        "Reset will clear your saved search criteria and results. Continue?"
-      );
-      if (!confirmed) return;
+      setShowResetConfirm(true);
+    } else {
+      doReset();
     }
+  }
 
+  function doReset() {
+    setShowResetConfirm(false);
     setCity(""); setState(""); setZipCode(""); setPropertyType("");
     setMinBedrooms(""); setMinBathrooms(""); setMaxRent("");
     setMaxDaysListed(""); setListingStatus("active");
@@ -823,6 +1021,30 @@ export default function PropertySearchClient({
           )}
         </div>
 
+        {/* No City Report notice — non-blocking */}
+        {!hasCompletedReport && (
+          <div
+            className="mt-4 flex gap-2 rounded-lg px-4 py-3 text-sm"
+            style={{
+              backgroundColor: "var(--color-surface-soft)",
+              border: "1px solid var(--color-border)",
+              color: "var(--color-text)",
+            }}
+          >
+            <span aria-hidden="true" style={{ opacity: 0.6 }}>ℹ</span>
+            <p>
+              No City Report found for this project. Search criteria may not be prefilled.{" "}
+              <a
+                href={`/projects/${projectId}/research`}
+                className="underline"
+                style={{ color: "var(--color-secondary)" }}
+              >
+                View City Report
+              </a>
+            </p>
+          </div>
+        )}
+
         {/* RentCast not configured notice */}
         {!rentCastConfigured && (
           <div
@@ -841,6 +1063,9 @@ export default function PropertySearchClient({
           </div>
         )}
       </div>
+
+      {/* ── Saved Leads Panel ────────────────────────────────────────── */}
+      <SavedLeadsPanel leads={savedLeads} projectId={projectId} />
 
       {/* ── Filter form ──────────────────────────────────────────────── */}
       <section aria-labelledby="search-filters-heading" className="mb-8">
@@ -1023,19 +1248,47 @@ export default function PropertySearchClient({
               </button>
 
               {/* SECONDARY — Reset */}
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={isPending || (!hasActiveFilters && !submitted)}
-                className="text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{
-                  border: "1px solid var(--color-border)",
-                  color: "var(--color-text)",
-                  backgroundColor: "#fff",
-                }}
-              >
-                Reset &amp; clear saved search
-              </button>
+              {!showResetConfirm ? (
+                <button
+                  type="button"
+                  onClick={handleResetRequest}
+                  disabled={isPending || (!hasActiveFilters && !submitted)}
+                  className="text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{
+                    border: "1px solid var(--color-border)",
+                    color: "var(--color-text)",
+                    backgroundColor: "#fff",
+                  }}
+                >
+                  Reset &amp; clear saved search
+                </button>
+              ) : (
+                <div
+                  className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm"
+                  style={{
+                    border: "1px solid var(--color-border)",
+                    backgroundColor: "#FEF2F2",
+                  }}
+                >
+                  <span style={{ color: "#991B1B" }}>Clear all saved search data?</span>
+                  <button
+                    type="button"
+                    onClick={doReset}
+                    className="font-semibold text-sm px-3 py-1 rounded"
+                    style={{ backgroundColor: "#991B1B", color: "#fff" }}
+                  >
+                    Confirm Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowResetConfirm(false)}
+                    className="font-medium text-sm px-3 py-1 rounded"
+                    style={{ border: "1px solid var(--color-border)", backgroundColor: "#fff" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
 
               {submitted && !isSearching && (
                 <span className="text-xs" style={{ color: "var(--color-secondary)" }}>
@@ -1048,7 +1301,7 @@ export default function PropertySearchClient({
       </section>
 
       {/* ── Manual property lead form ────────────────────────────────── */}
-      <ManualLeadForm />
+      <ManualLeadForm projectId={projectId} />
 
       {/* ── Results ──────────────────────────────────────────────────── */}
       {submitted ? (
@@ -1096,7 +1349,11 @@ export default function PropertySearchClient({
           {!isSearching && results.length > 0 && (
             <ul className="space-y-4" aria-label="Property search results">
               {results.map((listing) => (
-                <ListingCard key={listing.id || listing.formattedAddress} listing={listing} />
+                <ListingCard
+                  key={listing.id || listing.formattedAddress}
+                  listing={listing}
+                  projectId={projectId}
+                />
               ))}
             </ul>
           )}

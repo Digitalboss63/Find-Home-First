@@ -139,6 +139,7 @@ export const propertyOwners = pgTable(
     lastResponse: text("last_response"),
     /** How this lead was found — "rentcast" | "zillow" | "manual" | "referral" | "other" */
     leadSource: text("lead_source").notNull().default("manual"),
+    rentcastPropertyId: text("rentcast_property_id"),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -150,6 +151,7 @@ export const propertyOwners = pgTable(
   (t) => [
     index("owners_org_idx").on(t.organizationId),
     index("owners_status_idx").on(t.outreachStatus),
+    index("owners_rentcast_idx").on(t.rentcastPropertyId),
   ]
 );
 
@@ -186,6 +188,10 @@ export const propertyLeads = pgTable(
     ownerId: uuid("owner_id").references(() => propertyOwners.id, {
       onDelete: "set null",
     }),
+    // FK to projects enforced in migration 0005 (not here to avoid circular type inference)
+    projectId: uuid("project_id"),
+    opportunityScore: integer("opportunity_score"),
+    opportunitySignals: text("opportunity_signals"),
     /** "rentcast" | "zillow" | "manual" | "other" */
     source: text("source").notNull().default("manual"),
     /** External listing/property ID from source API. */
@@ -244,12 +250,11 @@ export const propertyLeads = pgTable(
     index("leads_stage_idx").on(t.acquisitionStage),
     index("leads_owner_idx").on(t.ownerId),
     index("leads_external_idx").on(t.externalId),
-    // Prevent duplicate saved leads from same API source within same org
-    uniqueIndex("leads_org_external_idx").on(t.organizationId, t.externalId),
-    // Prevent duplicate leads by normalized address within same org
-    uniqueIndex("leads_org_norm_address_idx").on(t.organizationId, t.normalizedAddress),
-    // Prevent duplicate leads by normalized source URL within same org
-    uniqueIndex("leads_org_norm_url_idx").on(t.organizationId, t.normalizedSourceUrl),
+    // Project-scoped dedup indexes
+    index("leads_project_idx").on(t.projectId),
+    index("leads_proj_external_idx").on(t.organizationId, t.projectId, t.externalId),
+    index("leads_proj_norm_url_idx").on(t.organizationId, t.projectId, t.normalizedSourceUrl),
+    index("leads_proj_norm_address_idx").on(t.organizationId, t.projectId, t.normalizedAddress),
   ]
 );
 

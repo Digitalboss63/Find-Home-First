@@ -74,28 +74,6 @@ describe("AT-C10 — Excel executive summary title", () => {
   });
 });
 
-// ─── PDF document title (pure) ────────────────────────────────────────────────
-// NOTE: renderToBuffer is slow (spawns @react-pdf/renderer worker pipeline).
-// PDF render tests are covered by scripts/verify-exports.mjs run outside Vitest.
-// This test is intentionally skipped here, matching the pattern in export.test.ts.
-
-import { buildReportDocument } from "../export/pdf-document";
-import { renderToBuffer } from "@react-pdf/renderer";
-
-describe.skip("AT-C09 — PDF document title and cover (run via scripts/verify-exports.mjs)", () => {
-  it("PDF buffer starts with %PDF (valid PDF output)", async () => {
-    const doc = buildReportDocument({
-      report: ATLANTA_FIXTURE,
-      exportedAt: new Date().toISOString(),
-      onlineReportUrl: "https://app.findhomefirst.com/projects/test/research",
-    });
-    const buffer = await renderToBuffer(
-      doc as unknown as Parameters<typeof renderToBuffer>[0]
-    );
-    expect(Buffer.from(buffer).slice(0, 4).toString("ascii")).toBe("%PDF");
-  });
-});
-
 // ─── proceedToFindPropertiesAction (mocked DB) ────────────────────────────────
 
 const { mockGetDb } = vi.hoisted(() => {

@@ -114,6 +114,9 @@ export interface PropertyLeadView {
   followUpDate: string | null;
   notes: string | null;
   ownerId: string | null;
+  projectId: string | null;
+  opportunityScore: number | null;
+  opportunitySignals: string | null;
 }
 
 export interface PropertyOwnerView {
@@ -480,6 +483,9 @@ export async function listPropertyLeads(
       followUpDate: r.followUpDate,
       notes: r.notes,
       ownerId: r.ownerId,
+      projectId: r.projectId ?? null,
+      opportunityScore: r.opportunityScore ?? null,
+      opportunitySignals: r.opportunitySignals ?? null,
     }));
   } catch {
     console.warn("[repository] listPropertyLeads failed");
@@ -507,6 +513,9 @@ export interface SavePropertyLeadInput {
   listingPhone?: string;
   listingEmail?: string;
   notes?: string;
+  projectId?: string;
+  opportunityScore?: number;
+  opportunitySignals?: string;
 }
 
 // ─── Dedup helpers ────────────────────────────────────────────────────────────
@@ -538,6 +547,9 @@ export async function savePropertyLead(
     const normalizedAddr = input.address ? normalizeAddress(input.address) : null;
     const normalizedSrcUrl = input.sourceUrl ? normalizeUrl(input.sourceUrl) : null;
 
+    // Dedup logic: project-scoped when projectId is provided, org-only for legacy
+    const useProjectScope = !!input.projectId;
+
     // Check duplicate by externalId
     if (input.externalId) {
       const existing = await db
@@ -551,7 +563,15 @@ export async function savePropertyLead(
         )
         .limit(1);
       if (existing.length > 0) {
-        return { id: existing[0].id, duplicate: true };
+        if (!useProjectScope) return { id: existing[0].id, duplicate: true };
+        // Check if the existing lead belongs to the same project
+        const sameProject = await db.select({ id: propertyLeads.id }).from(propertyLeads)
+          .where(and(
+            eq(propertyLeads.organizationId, organizationId),
+            eq(propertyLeads.externalId, input.externalId),
+            eq(propertyLeads.projectId, input.projectId!)
+          )).limit(1);
+        if (sameProject.length > 0) return { id: sameProject[0].id, duplicate: true };
       }
     }
 
@@ -568,7 +588,14 @@ export async function savePropertyLead(
         )
         .limit(1);
       if (existing.length > 0) {
-        return { id: existing[0].id, duplicate: true };
+        if (!useProjectScope) return { id: existing[0].id, duplicate: true };
+        const sameProject = await db.select({ id: propertyLeads.id }).from(propertyLeads)
+          .where(and(
+            eq(propertyLeads.organizationId, organizationId),
+            eq(propertyLeads.normalizedSourceUrl, normalizedSrcUrl),
+            eq(propertyLeads.projectId, input.projectId!)
+          )).limit(1);
+        if (sameProject.length > 0) return { id: sameProject[0].id, duplicate: true };
       }
     }
 
@@ -585,7 +612,14 @@ export async function savePropertyLead(
         )
         .limit(1);
       if (existing.length > 0) {
-        return { id: existing[0].id, duplicate: true };
+        if (!useProjectScope) return { id: existing[0].id, duplicate: true };
+        const sameProject = await db.select({ id: propertyLeads.id }).from(propertyLeads)
+          .where(and(
+            eq(propertyLeads.organizationId, organizationId),
+            eq(propertyLeads.normalizedAddress, normalizedAddr),
+            eq(propertyLeads.projectId, input.projectId!)
+          )).limit(1);
+        if (sameProject.length > 0) return { id: sameProject[0].id, duplicate: true };
       }
     }
 
@@ -615,6 +649,9 @@ export async function savePropertyLead(
         listingPhone: input.listingPhone ?? null,
         listingEmail: input.listingEmail ?? null,
         notes: input.notes ?? null,
+        projectId: input.projectId ?? null,
+        opportunityScore: input.opportunityScore ?? null,
+        opportunitySignals: input.opportunitySignals ?? null,
       })
       .returning({ id: propertyLeads.id });
 
@@ -711,6 +748,232 @@ export async function getPropertyOwner(
     };
   } catch {
     console.warn("[repository] getPropertyOwner failed");
+    return null;
+  }
+}
+
+// ─── New property owner/lead functions ───────────────────────────────────────
+
+export async function getPropertyOwnerByRentcastId(
+  organizationId: string,
+  rentcastPropertyId: string
+): Promise<PropertyOwnerView | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    const rows = await db
+      .select()
+      .from(propertyOwners)
+      .where(and(
+        eq(propertyOwners.organizationId, organizationId),
+        eq(propertyOwners.rentcastPropertyId, rentcastPropertyId)
+      ))
+      .limit(1);
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      id: r.id,
+      name: r.name,
+      ownerType: r.ownerType,
+      phone: r.phone,
+      email: r.email,
+      mailingAddress: r.mailingAddress,
+      mailingDiffersFromProperty: r.mailingDiffersFromProperty,
+      ownerOccupied: r.ownerOccupied,
+      motivationNotes: r.motivationNotes,
+      outreachStatus: r.outreachStatus,
+      lastContactDate: r.lastContactDate,
+      nextFollowUpDate: r.nextFollowUpDate,
+      lastResponse: r.lastResponse,
+      leadSource: r.leadSource,
+      notes: r.notes,
+    };
+  } catch {
+    console.warn("[repository] getPropertyOwnerByRentcastId failed");
+    return null;
+  }
+}
+
+export interface UpsertPropertyOwnerInput {
+  rentcastPropertyId?: string | null;
+  name: string;
+  ownerType?: string;
+  phone?: string | null;
+  email?: string | null;
+  mailingAddress?: string | null;
+  mailingDiffersFromProperty?: boolean | null;
+  ownerOccupied?: boolean | null;
+  motivationNotes?: string | null;
+  leadSource?: string;
+}
+
+export async function upsertPropertyOwner(
+  organizationId: string,
+  input: UpsertPropertyOwnerInput
+): Promise<string | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    if (input.rentcastPropertyId) {
+      const existing = await db
+        .select({ id: propertyOwners.id })
+        .from(propertyOwners)
+        .where(and(
+          eq(propertyOwners.organizationId, organizationId),
+          eq(propertyOwners.rentcastPropertyId, input.rentcastPropertyId)
+        ))
+        .limit(1);
+
+      if (existing.length > 0) {
+        await db.update(propertyOwners)
+          .set({
+            name: input.name,
+            ownerType: input.ownerType ?? "unknown",
+            mailingAddress: input.mailingAddress ?? null,
+            mailingDiffersFromProperty: input.mailingDiffersFromProperty ?? null,
+            ownerOccupied: input.ownerOccupied ?? null,
+            motivationNotes: input.motivationNotes ?? null,
+            leadSource: input.leadSource ?? "rentcast",
+            updatedAt: new Date(),
+          })
+          .where(eq(propertyOwners.id, existing[0].id));
+        return existing[0].id;
+      }
+    }
+
+    const inserted = await db
+      .insert(propertyOwners)
+      .values({
+        organizationId,
+        name: input.name,
+        ownerType: input.ownerType ?? "unknown",
+        phone: input.phone ?? null,
+        email: input.email ?? null,
+        mailingAddress: input.mailingAddress ?? null,
+        mailingDiffersFromProperty: input.mailingDiffersFromProperty ?? null,
+        ownerOccupied: input.ownerOccupied ?? null,
+        motivationNotes: input.motivationNotes ?? null,
+        leadSource: input.leadSource ?? "manual",
+        rentcastPropertyId: input.rentcastPropertyId ?? null,
+      })
+      .returning({ id: propertyOwners.id });
+
+    return inserted[0].id;
+  } catch {
+    console.warn("[repository] upsertPropertyOwner failed");
+    return null;
+  }
+}
+
+export async function updateLeadOwner(
+  organizationId: string,
+  leadId: string,
+  ownerId: string
+): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  try {
+    const ownerRows = await db.select({ id: propertyOwners.id })
+      .from(propertyOwners)
+      .where(and(eq(propertyOwners.id, ownerId), eq(propertyOwners.organizationId, organizationId)))
+      .limit(1);
+    if (ownerRows.length === 0) return false;
+
+    await db.update(propertyLeads)
+      .set({ ownerId, updatedAt: new Date() })
+      .where(and(eq(propertyLeads.id, leadId), eq(propertyLeads.organizationId, organizationId)));
+    return true;
+  } catch {
+    console.warn("[repository] updateLeadOwner failed");
+    return false;
+  }
+}
+
+export async function updateLeadStage(
+  organizationId: string,
+  leadId: string,
+  stage: string
+): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  try {
+    await db.update(propertyLeads)
+      .set({ acquisitionStage: stage, updatedAt: new Date() })
+      .where(and(eq(propertyLeads.id, leadId), eq(propertyLeads.organizationId, organizationId)));
+    return true;
+  } catch {
+    console.warn("[repository] updateLeadStage failed");
+    return false;
+  }
+}
+
+export async function updateLeadOpportunity(
+  organizationId: string,
+  leadId: string,
+  score: number,
+  signals: string
+): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  try {
+    await db.update(propertyLeads)
+      .set({ opportunityScore: score, opportunitySignals: signals, updatedAt: new Date() })
+      .where(and(eq(propertyLeads.id, leadId), eq(propertyLeads.organizationId, organizationId)));
+    return true;
+  } catch {
+    console.warn("[repository] updateLeadOpportunity failed");
+    return false;
+  }
+}
+
+export async function listProjectLeads(
+  organizationId: string,
+  projectId: string
+): Promise<PropertyLeadView[] | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    const rows = await db
+      .select()
+      .from(propertyLeads)
+      .where(and(
+        eq(propertyLeads.organizationId, organizationId),
+        eq(propertyLeads.projectId, projectId)
+      ))
+      .orderBy(desc(propertyLeads.createdAt));
+
+    return rows.map((r) => ({
+      id: r.id,
+      address: r.address,
+      city: r.city,
+      state: r.state,
+      zip: r.zip,
+      propertyType: r.propertyType,
+      bedrooms: r.bedrooms,
+      bathrooms: r.bathrooms,
+      monthlyRent: r.monthlyRent,
+      listingStatus: r.listingStatus,
+      listingDate: r.listingDate,
+      lastSeenDate: r.lastSeenDate,
+      daysOnMarket: r.daysOnMarket,
+      listingContact: r.listingContact,
+      listingPhone: r.listingPhone,
+      listingEmail: r.listingEmail,
+      source: r.source,
+      externalId: r.externalId,
+      sourceUrl: r.sourceUrl,
+      acquisitionStage: r.acquisitionStage,
+      qualificationStatus: r.qualificationStatus,
+      qualificationReason: r.qualificationReason,
+      followUpDate: r.followUpDate,
+      notes: r.notes,
+      ownerId: r.ownerId,
+      projectId: r.projectId ?? null,
+      opportunityScore: r.opportunityScore ?? null,
+      opportunitySignals: r.opportunitySignals ?? null,
+    }));
+  } catch {
+    console.warn("[repository] listProjectLeads failed");
     return null;
   }
 }

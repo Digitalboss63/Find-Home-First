@@ -15,14 +15,18 @@ import Link from "next/link";
 import { requireOrganization } from "@/lib/auth";
 import {
   getPropertySearchDraft,
-  listPropertyLeads,
+  listProjectLeads,
   listActiveProjects,
   projectBelongsToOrg,
   getProjectById,
+  getMarketResearch,
   isDemoAllowed,
 } from "@/lib/repository";
+import { getLatestReport } from "@/lib/repository-intelligence";
+import { getDb } from "@/db/client";
 import { isRentCastConfigured } from "@/lib/rentcast";
 import type { PropertySearchDraftView } from "@/lib/repository";
+import type { MarketReportSnapshot } from "@/lib/export/types";
 import PropertySearchClient from "./PropertySearchClient";
 import ProjectSelector from "./ProjectSelector";
 
@@ -51,6 +55,15 @@ const SEARCH_ELIGIBLE_STATUSES = new Set([
 
 interface PageProps {
   searchParams: Promise<{ project?: string }>;
+}
+
+/** Parse "Atlanta, GA" → { city: "Atlanta", state: "GA" } */
+function parseCommunity(community: string): { city: string; state: string } {
+  const parts = community.split(",").map((s) => s.trim());
+  if (parts.length >= 2) {
+    return { city: parts[0], state: parts[1] };
+  }
+  return { city: community.trim(), state: "" };
 }
 
 export default async function HousingSearchPage({ searchParams }: PageProps) {
@@ -105,16 +118,16 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
           <p className="text-sm mb-5" style={{ color: "var(--color-text)", opacity: 0.7 }}>
             This project is currently in the{" "}
             <strong>Research</strong> stage. The city and market must be
-            approved before searching for properties. Complete your market
-            research and advance the project status to continue.
+            approved before searching for properties. Complete your City Report
+            and advance the project status to continue.
           </p>
           <div className="flex flex-wrap gap-3">
             <Link
-              href={`/projects/${projectId}`}
+              href={`/projects/${projectId}/research`}
               className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
               style={{ backgroundColor: "var(--color-action)" }}
             >
-              Complete Market Research
+              View City Report
               <span aria-hidden="true">→</span>
             </Link>
             <Link
@@ -134,36 +147,101 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
     );
   }
 
-  // ── Valid projectId, eligible status — load draft and leads ──────────────
-  const [savedDraft, savedLeads] = await Promise.all([
+  // ── Valid projectId, eligible status — load data ─────────────────────────
+  const db = getDb();
+
+  // Non-blocking: check if there's a completed City Report for this project
+  let hasCompletedReport = false;
+  if (db) {
+    try {
+      const report = await getLatestReport(db, organizationId, projectId);
+      hasCompletedReport = report !== null;
+    } catch {
+      // non-blocking — ignore failures
+    }
+  }
+
+  const [savedDraft, savedLeads, marketResearch] = await Promise.all([
     getPropertySearchDraft(organizationId, user.dbUserId, projectId),
-    listPropertyLeads(organizationId),
+    listProjectLeads(organizationId, projectId),
+    getMarketResearch(projectId, organizationId),
   ]);
 
-  const initialDraft: PropertySearchDraftView = savedDraft ?? {
-    projectId,
-    city: "",
-    state: "",
-    zipCode: "",
-    propertyType: "",
-    minBedrooms: "",
-    minBathrooms: "",
-    maxRent: "",
-    maxDaysListed: "",
-    listingStatus: "active",
-    submitted: false,
-    lastSearchAt: null,
-    resultsSnapshot: null,
-    resultsCount: 0,
-    queryFingerprint: null,
-  };
+  // ── Build initial draft with smart prefill priority ──────────────────────
+  // Priority: (1) existing draft, (2) City Report snapshot, (3) project.community, (4) legacy market research, (5) blank
+
+  let initialDraft: PropertySearchDraftView;
+
+  if (savedDraft) {
+    // (1) Existing draft — restore exactly
+    initialDraft = savedDraft;
+  } else {
+    // Start with blank
+    let prefillCity = "";
+    let prefillState = "";
+    let prefillMaxRent = "";
+
+    // (2) City Report snapshot geography + economics
+    if (hasCompletedReport && db) {
+      try {
+        const report = await getLatestReport(db, organizationId, projectId);
+        if (report?.reportJson) {
+          const snapshot = JSON.parse(report.reportJson) as MarketReportSnapshot;
+          if (snapshot.geography?.city) prefillCity = snapshot.geography.city;
+          if (snapshot.geography?.stateAbbr) prefillState = snapshot.geography.stateAbbr;
+          // Conservative economics propertyRentUsd (only when explicitly present)
+          const conservative = snapshot.economicsScenarios?.find(
+            (s) => s.label === "Conservative"
+          );
+          if (conservative?.propertyRentUsd != null) {
+            prefillMaxRent = String(conservative.propertyRentUsd);
+          }
+        }
+      } catch {
+        // non-blocking
+      }
+    }
+
+    // (3) project.community — only if City Report didn't prefill
+    if (!prefillCity && project?.community) {
+      const parsed = parseCommunity(project.community);
+      prefillCity = parsed.city;
+      prefillState = parsed.state;
+    }
+
+    // (4) Legacy market research — maxAcceptableLease as fallback rent
+    if (!prefillMaxRent && marketResearch?.maxAcceptableLease) {
+      prefillMaxRent = marketResearch.maxAcceptableLease;
+    }
+
+    initialDraft = {
+      projectId,
+      city: prefillCity,
+      state: prefillState,
+      zipCode: "",
+      propertyType: "",
+      minBedrooms: "",
+      minBathrooms: "",
+      maxRent: prefillMaxRent,
+      maxDaysListed: "",
+      listingStatus: "active",
+      submitted: false,
+      lastSearchAt: null,
+      resultsSnapshot: null,
+      resultsCount: 0,
+      queryFingerprint: null,
+    };
+  }
 
   return (
     <PropertySearchClient
       initialDraft={initialDraft}
       savedLeadCount={savedLeads?.length ?? 0}
+      savedLeads={savedLeads ?? []}
       rentCastConfigured={isRentCastConfigured()}
       isDemoMode={isDemoAllowed()}
+      projectId={projectId}
+      hasCompletedReport={hasCompletedReport}
     />
   );
 }
