@@ -88,3 +88,91 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ── Print styles — Market Intelligence Report ──────────────────── */
+/*
+ * These rules apply only when printing or using browser Print to PDF.
+ * They target elements by data-* attributes set in the report components.
+ * Only .market-report source links get the URL-printed treatment —
+ * not every anchor on the page.
+ */
+@media print {
+  /* Hide all app chrome */
+  [data-app-nav],
+  [data-app-sidebar],
+  [data-app-header],
+  [data-export-controls],
+  [data-decision-controls],
+  [data-collection-status],
+  [data-demo-notice],
+  [data-skip-link] {
+    display: none !important;
+  }
+
+  /* Full width, no app shell padding */
+  [data-report-content] {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Page setup */
+  @page {
+    size: letter portrait;
+    margin: 0.75in;
+  }
+
+  @page :first {
+    margin-top: 0.5in;
+  }
+
+  /* Prevent sections from splitting awkwardly */
+  [data-report-section] {
+    page-break-inside: avoid;
+  }
+
+  /* Major sections start on a new page */
+  [data-report-section-major] {
+    page-break-before: always;
+  }
+
+  /* First major section does not get a forced break */
+  [data-report-section-major]:first-of-type {
+    page-break-before: avoid;
+  }
+
+  /* Tables: repeat headers, avoid row splits */
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+
+  /* Source links only — print the URL after the link text */
+  .market-report .source-link[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.7em;
+    color: #555;
+    word-break: break-all;
+  }
+
+  /* Hide interactive controls inside the report */
+  [data-report-content] button,
+  [data-report-content] [data-export-controls] {
+    display: none !important;
+  }
+
+  /* How To Use section — always expanded in print */
+  [data-howto-collapsed] {
+    display: block !important;
+  }
+
+  /* Remove box shadows and background decorations */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+}

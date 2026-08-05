@@ -217,7 +217,8 @@ describe("ADA widget injection logic", () => {
 
   it("does NOT inject when enabled but value is null", () => {
     const enabled = true;
-    const value: string | null = null;
+    // value is typed string | null; null literal assigned to verify null branch
+    const value: string | null = (null as string | null);
     const shouldInject = enabled && value != null && value.trim().length > 0;
     expect(shouldInject).toBe(false);
   });

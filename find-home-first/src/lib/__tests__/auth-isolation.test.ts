@@ -109,8 +109,8 @@ describe("getProjectById cross-org isolation", () => {
 describe("production DB failure — demo must not activate", () => {
   it("isDemoAllowed() is false in production with no DEMO_MODE", () => {
     // Structural test: the logic check
-    const nodeEnv = "production";
-    const demoMode = "";
+    const nodeEnv: string = "production";
+    const demoMode: string = "";
     const result = nodeEnv === "development" || demoMode === "true";
     expect(result).toBe(false);
   });

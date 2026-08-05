@@ -1,0 +1,82 @@
+{
+  "id": "d8a3f912-e541-4b7c-9c2d-7e8f1a0b3c5d",
+  "prevId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.market_research_jobs": {
+      "name": "market_research_jobs",
+      "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "organization_id": { "name": "organization_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "project_id": { "name": "project_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "status": { "name": "status", "type": "text", "primaryKey": false, "notNull": true, "default": "'pending'" },
+        "triggered_by": { "name": "triggered_by", "type": "text", "primaryKey": false, "notNull": false },
+        "started_at": { "name": "started_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": false },
+        "completed_at": { "name": "completed_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": false },
+        "error_message": { "name": "error_message", "type": "text", "primaryKey": false, "notNull": false },
+        "sources_summary": { "name": "sources_summary", "type": "text", "primaryKey": false, "notNull": false },
+        "created_at": { "name": "created_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": true, "default": "now()" },
+        "updated_at": { "name": "updated_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": true, "default": "now()" }
+      },
+      "indexes": {
+        "mrj_org_idx": { "name": "mrj_org_idx", "columns": [{ "expression": "organization_id", "isExpression": false, "asc": true, "nulls": "last" }], "isUnique": false, "concurrently": false, "method": "btree", "with": {} },
+        "mrj_project_idx": { "name": "mrj_project_idx", "columns": [{ "expression": "project_id", "isExpression": false, "asc": true, "nulls": "last" }], "isUnique": false, "concurrently": false, "method": "btree", "with": {} },
+        "mrj_status_idx": { "name": "mrj_status_idx", "columns": [{ "expression": "status", "isExpression": false, "asc": true, "nulls": "last" }], "isUnique": false, "concurrently": false, "method": "btree", "with": {} }
+      },
+      "foreignKeys": {
+        "market_research_jobs_organization_id_organizations_id_fk": { "name": "market_research_jobs_organization_id_organizations_id_fk", "tableFrom": "market_research_jobs", "tableTo": "organizations", "columnsFrom": ["organization_id"], "columnsTo": ["id"], "onDelete": "cascade", "onUpdate": "no action" },
+        "market_research_jobs_project_id_projects_id_fk": { "name": "market_research_jobs_project_id_projects_id_fk", "tableFrom": "market_research_jobs", "tableTo": "projects", "columnsFrom": ["project_id"], "columnsTo": ["id"], "onDelete": "cascade", "onUpdate": "no action" }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.market_research_reports": {
+      "name": "market_research_reports",
+      "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "organization_id": { "name": "organization_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "project_id": { "name": "project_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "job_id": { "name": "job_id", "type": "uuid", "primaryKey": false, "notNull": false },
+        "version": { "name": "version", "type": "integer", "primaryKey": false, "notNull": true },
+        "status": { "name": "status", "type": "text", "primaryKey": false, "notNull": true, "default": "'complete'" },
+        "report_json": { "name": "report_json", "type": "text", "primaryKey": false, "notNull": true },
+        "generated_at": { "name": "generated_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": true, "default": "now()" },
+        "data_through_date": { "name": "data_through_date", "type": "text", "primaryKey": false, "notNull": true },
+        "created_at": { "name": "created_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": true, "default": "now()" }
+      },
+      "indexes": {
+        "mrr_org_idx": { "name": "mrr_org_idx", "columns": [{ "expression": "organization_id", "isExpression": false, "asc": true, "nulls": "last" }], "isUnique": false, "concurrently": false, "method": "btree", "with": {} },
+        "mrr_project_idx": { "name": "mrr_project_idx", "columns": [{ "expression": "project_id", "isExpression": false, "asc": true, "nulls": "last" }], "isUnique": false, "concurrently": false, "method": "btree", "with": {} },
+        "mrr_project_version_idx": { "name": "mrr_project_version_idx", "columns": [{ "expression": "project_id", "isExpression": false, "asc": true, "nulls": "last" }, { "expression": "version", "isExpression": false, "asc": true, "nulls": "last" }], "isUnique": true, "concurrently": false, "method": "btree", "with": {} }
+      },
+      "foreignKeys": {
+        "market_research_reports_organization_id_organizations_id_fk": { "name": "market_research_reports_organization_id_organizations_id_fk", "tableFrom": "market_research_reports", "tableTo": "organizations", "columnsFrom": ["organization_id"], "columnsTo": ["id"], "onDelete": "cascade", "onUpdate": "no action" },
+        "market_research_reports_project_id_projects_id_fk": { "name": "market_research_reports_project_id_projects_id_fk", "tableFrom": "market_research_reports", "tableTo": "projects", "columnsFrom": ["project_id"], "columnsTo": ["id"], "onDelete": "cascade", "onUpdate": "no action" },
+        "market_research_reports_job_id_market_research_jobs_id_fk": { "name": "market_research_reports_job_id_market_research_jobs_id_fk", "tableFrom": "market_research_reports", "tableTo": "market_research_jobs", "columnsFrom": ["job_id"], "columnsTo": ["id"], "onDelete": "set null", "onUpdate": "no action" }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
+

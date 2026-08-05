@@ -635,3 +635,76 @@ export const projectMarketResearch = pgTable(
     index("market_research_org_idx").on(t.organizationId),
   ]
 );
+
+
+// --- Market Intelligence Jobs -------------------------------------------------
+//
+// Tracks automated data-collection and report-generation runs.
+// One job per refresh request. Jobs are org+project scoped.
+
+export const marketResearchJobs = pgTable(
+  "market_research_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    /** "pending" | "running" | "complete" | "failed" */
+    status: text("status").notNull().default("pending"),
+    /** Clerk userId of the person who triggered the run */
+    triggeredBy: text("triggered_by"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    /** Sanitized error message — never includes credentials */
+    errorMessage: text("error_message"),
+    /** JSON summary of per-source outcomes: { census: "ok"|"not_verified", ... } */
+    sourcesSummary: text("sources_summary"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("mrj_org_idx").on(t.organizationId),
+    index("mrj_project_idx").on(t.projectId),
+    index("mrj_status_idx").on(t.status),
+  ]
+);
+
+// --- Market Intelligence Reports (versioned snapshots) ------------------------
+//
+// Immutable versioned report snapshots. The reportJson field holds a
+// complete MarketReportSnapshot serialized as JSON.
+// Versions increment per project; status "complete" = current, "superseded" = old.
+// Cross-org access is prevented by the organizationId column in every query.
+
+export const marketResearchReports = pgTable(
+  "market_research_reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id").references(() => marketResearchJobs.id, {
+      onDelete: "set null",
+    }),
+    version: integer("version").notNull(),
+    /** "complete" | "superseded" */
+    status: text("status").notNull().default("complete"),
+    /** Full MarketReportSnapshot as JSON. Never includes credentials or orgId. */
+    reportJson: text("report_json").notNull(),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+    /** ISO date string YYYY-MM-DD — latest data date across all sources */
+    dataThroughDate: text("data_through_date").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("mrr_org_idx").on(t.organizationId),
+    index("mrr_project_idx").on(t.projectId),
+    uniqueIndex("mrr_project_version_idx").on(t.projectId, t.version),
+  ]
+);

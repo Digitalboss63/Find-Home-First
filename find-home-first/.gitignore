@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+scripts/output/
+scripts/_pdf-timeout-test.mjs
+scripts/_pdf-stream-test.mjs
+scripts/_excel-verify.mjs

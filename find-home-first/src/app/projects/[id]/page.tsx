@@ -264,37 +264,37 @@ export default async function ProjectPage({ params }: Props) {
         </div>
       )}
 
-      {/* Research CTA */}
-      {isResearchStage && (
-        <div
-          style={{
-            backgroundColor: "var(--color-surface-soft)",
-            border: "1px solid var(--color-border)",
-            borderRadius: "0.75rem",
-            padding: "1.25rem",
-            marginBottom: "1.25rem",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "1rem",
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <p style={{ fontWeight: 600, color: "var(--color-primary)", margin: "0 0 0.25rem", fontSize: "0.9rem" }}>
-              Market Research Workspace
-            </p>
-            <p style={{ fontSize: "0.8rem", color: "var(--color-text)", opacity: 0.65, margin: 0 }}>
-              Evaluate demand, funding, property economics, and supply to decide if this city is viable.
-            </p>
-          </div>
+      {/* Market Intelligence CTA — always shown */}
+      <div
+        style={{
+          backgroundColor: "var(--color-surface-soft)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "0.75rem",
+          padding: "1.25rem",
+          marginBottom: "1.25rem",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "1rem",
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <p style={{ fontWeight: 600, color: "var(--color-primary)", margin: "0 0 0.25rem", fontSize: "0.9rem" }}>
+            Market Intelligence Report
+          </p>
+          <p style={{ fontSize: "0.8rem", color: "var(--color-text)", opacity: 0.65, margin: 0 }}>
+            Automated analysis of housing need, funding programs, property economics, and recommended next action.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: "0.625rem", flexWrap: "wrap" }}>
           <Link
-            href={`/projects/${project.id}/research`}
+            href={`/projects/${project.id}/market-intelligence`}
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "0.375rem",
-              backgroundColor: "var(--color-action)",
+              backgroundColor: "var(--color-primary)",
               color: "#fff",
               textDecoration: "none",
               padding: "0.625rem 1.25rem",
@@ -304,10 +304,31 @@ export default async function ProjectPage({ params }: Props) {
               whiteSpace: "nowrap",
             }}
           >
-            Open Research →
+            📊 View Report →
           </Link>
+          {isResearchStage && (
+            <Link
+              href={`/projects/${project.id}/research`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.375rem",
+                backgroundColor: "#fff",
+                color: "var(--color-primary)",
+                border: "1px solid var(--color-border)",
+                textDecoration: "none",
+                padding: "0.625rem 1rem",
+                borderRadius: "0.5rem",
+                fontSize: "0.875rem",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Research Workspace
+            </Link>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Placement journey */}
       <section
