@@ -1,11 +1,11 @@
 /**
- * Filename generator for Market Intelligence Report exports.
+ * Filename generator for City Demographic & Opportunity Report exports.
  *
  * Convention:
- *   Find-Home-First_{Market}_{Target-Population}_Market-Research_v{Version}_{Date}.{ext}
+ *   Find-Home-First_{Market}_{Target-Population}_City-Report_v{Version}_{Date}.{ext}
  *
  * Example:
- *   Find-Home-First_Atlanta-GA_Veterans_Market-Research_v1_2026-08-03.pdf
+ *   Find-Home-First_Atlanta-GA_Veterans_City-Report_v1_2026-08-03.pdf
  *
  * All characters outside [A-Za-z0-9._-] are replaced with "-".
  * Multiple consecutive "-" are collapsed to one.
@@ -28,7 +28,7 @@ export function buildExportFilename(params: FilenameParams): string {
   const version = `v${params.version}`;
   const ext = params.format;
 
-  const base = `Find-Home-First_${market}_${population}_Market-Research_${version}_${date}.${ext}`;
+  const base = `Find-Home-First_${market}_${population}_City-Report_${version}_${date}.${ext}`;
   return base;
 }
 

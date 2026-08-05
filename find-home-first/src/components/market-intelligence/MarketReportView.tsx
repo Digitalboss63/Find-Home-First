@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Nine-section Market Intelligence Report display.
+ * Nine-section City Demographic & Opportunity Report display.
  * Renders a complete MarketReportSnapshot from the database.
  * Section order matches the export document.
  */
@@ -160,7 +160,7 @@ function BandBadge({ band }: { band: "High" | "Medium" | "Low" | "Unknown" }) {
 function Section1Cover({ r }: { r: MarketReportSnapshot }) {
   return (
     <div style={card}>
-      <SectionHeading n="1" title="Report Overview" sub="Auto-generated market intelligence snapshot" />
+      <SectionHeading n="1" title="Report Overview" sub="City Demographic & Opportunity Report" />
       <KV k="Project" v={r.projectName} />
       <KV k="Geography" v={`${r.geography.city}, ${r.geography.stateAbbr}`} />
       {r.geography.county && <KV k="County" v={r.geography.county} />}
@@ -613,7 +613,7 @@ export function MarketReportView({ report: r, version, generatedAt, dataThroughD
           fontWeight: 600,
         }}
       >
-        {`⚠ This is an automated market intelligence report. All data marked "Not Verified" requires direct confirmation with the relevant program administrator before making any operational decision.`}
+        {`⚠ This is an automated city report. All data marked "Not Verified" requires direct confirmation with the relevant program administrator before making any operational decision.`}
       </div>
 
       <Section1Cover r={r} />

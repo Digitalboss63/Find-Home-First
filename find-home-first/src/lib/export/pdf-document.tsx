@@ -247,9 +247,9 @@ function PageHeader({ report }: { report: MarketReportSnapshot }) {
   return (
     <View style={s.pageHeader} fixed>
       <Text style={s.pageHeaderLeft}>
-        Find Home First — Market Intelligence Report · {report.geography.city}, {report.geography.stateAbbr} · {report.targetPopulation}
+        Find Home First — City Demographic &amp; Opportunity Report · {report.geography.city}, {report.geography.stateAbbr} · {report.targetPopulation}
       </Text>
-      <Text style={s.pageHeaderRight}>v{report.version} · {report.geography.city}, {report.geography.stateAbbr}</Text>
+      <Text style={s.pageHeaderRight}>{report.geography.city}, {report.geography.stateAbbr}</Text>
     </View>
   );
 }
@@ -286,7 +286,7 @@ function CoverSection({ input }: { input: ExportInput }) {
     <View>
       <View style={s.coverBlock}>
         <Text style={s.coverTitle}>Find Home First</Text>
-        <Text style={s.coverSubtitle}>Market Intelligence Report</Text>
+        <Text style={s.coverSubtitle}>City Demographic &amp; Opportunity Report</Text>
         <Text style={s.coverSubtitle}>{report.projectName}</Text>
         <Text style={s.coverSubtitle}>
           {report.geography.city}, {report.geography.stateAbbr} · {report.targetPopulation}
@@ -654,10 +654,10 @@ export function buildReportDocument(input: ExportInput): React.ReactElement {
 
   return (
     <Document
-      title={`Find Home First — Market Intelligence Report — ${report.geography.city}, ${report.geography.stateAbbr} — ${report.targetPopulation} — v${report.version}`}
+      title={`Find Home First — City Demographic & Opportunity Report — ${report.geography.city}, ${report.geography.stateAbbr} — ${report.targetPopulation}`}
       author="Find Home First"
-      subject="Market Intelligence Report"
-      keywords={`housing, market research, ${report.geography.city}, ${report.targetPopulation}, ${report.verdict}`}
+      subject="City Demographic & Opportunity Report"
+      keywords={`housing, city report, ${report.geography.city}, ${report.targetPopulation}, ${report.verdict}`}
       creator="Find Home First"
       producer="@react-pdf/renderer"
       language="en"

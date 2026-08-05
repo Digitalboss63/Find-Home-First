@@ -11,6 +11,7 @@ import type { MarketResearchView } from "@/lib/repository";
 import { searchRentalListings } from "@/lib/rentcast";
 import type { RentCastListing } from "@/lib/rentcast";
 import { checkApprovalRequirements } from "@/lib/market-research-validation";
+import { getLatestReport } from "@/lib/repository-intelligence";
 
 export interface ResearchActionState {
   error: string | null;
@@ -352,4 +353,131 @@ export async function testPropertySearchAction(
     error: result.error ?? null,
     totalFound: result.listings.length,
   };
+}
+
+// ── Statuses at which the project is already eligible for property search ──────
+
+const ALREADY_ELIGIBLE_STATUSES = new Set([
+  "city_approved",
+  "finding_property",
+  "contacting_owner",
+  "application_in_progress",
+  "property_approved",
+  "preparing_property",
+  "seeking_referrals",
+  "reviewing_resident",
+  "placement_approved",
+]);
+
+/**
+ * proceedToFindPropertiesAction
+ *
+ * Validates that a completed City Report exists for the project, then
+ * atomically advances the project status and redirects to the
+ * project-scoped Properties Finder.
+ *
+ * Preconditions (all checked server-side):
+ *   1. User is authenticated and belongs to an organization.
+ *   2. The project belongs to that organization.
+ *   3. A completed market_research_reports row exists for the project.
+ *   4. The current project status is researching_city (advance required)
+ *      OR already eligible (redirect directly, no DB write).
+ *
+ * On any failure the function returns an error string; it never throws
+ * past the caller boundary.
+ *
+ * The full transaction (status update + history insert) rolls back
+ * automatically if either step fails.
+ */
+export async function proceedToFindPropertiesAction(
+  projectId: string
+): Promise<{ error: string } | never> {
+  // ── 1. Auth ────────────────────────────────────────────────────────────────
+  let orgCtx: Awaited<ReturnType<typeof requireOrganization>>;
+  try {
+    orgCtx = await requireOrganization();
+  } catch {
+    return { error: "Authentication required." };
+  }
+  const { organizationId } = orgCtx;
+
+  // ── 2. Ownership guard ─────────────────────────────────────────────────────
+  if (!projectId || typeof projectId !== "string") {
+    return { error: "Invalid project." };
+  }
+  const belongs = await projectBelongsToOrg(projectId, organizationId);
+  if (!belongs) return { error: "Project not found." };
+
+  // ── 3. DB availability ─────────────────────────────────────────────────────
+  const db = getDb();
+  if (!db) return { error: "Database unavailable." };
+
+  // ── 4. Load current project status ─────────────────────────────────────────
+  const [proj] = await db
+    .select({ currentStatus: projects.currentStatus })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
+    .limit(1);
+
+  if (!proj) return { error: "Project not found." };
+
+  // ── 5. Already eligible — redirect directly, no write ─────────────────────
+  if (ALREADY_ELIGIBLE_STATUSES.has(proj.currentStatus)) {
+    redirect(`/housing-search?project=${projectId}`);
+  }
+
+  // ── 6. Require a completed City Report ────────────────────────────────────
+  let reportExists = false;
+  try {
+    const report = await getLatestReport(db, organizationId, projectId);
+    reportExists = report !== null && report.status === "complete";
+  } catch {
+    return { error: "Could not verify report status. Please try again." };
+  }
+
+  if (!reportExists) {
+    return {
+      error:
+        "A completed City Report is required before searching for properties. Generate the report first.",
+    };
+  }
+
+  // ── 7. Atomic status advance ───────────────────────────────────────────────
+  try {
+    await db.transaction(async (tx) => {
+      // Advance: researching_city → finding_property
+      // (city_approved is an intermediate state; operators proceed directly to finding)
+      await tx
+        .update(projects)
+        .set({
+          currentStatus: "finding_property",
+          blocker: null,
+          blockerReason: null,
+          nextAction: "Search for suitable rental properties and motivated owners.",
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(projects.id, projectId),
+            eq(projects.organizationId, organizationId)
+          )
+        );
+
+      await tx.insert(projectStatusHistory).values({
+        projectId,
+        previousStatus: proj.currentStatus,
+        newStatus: "finding_property",
+        reason: "Operator proceeded to Find Properties after reviewing City Report.",
+      });
+    });
+  } catch (err) {
+    console.error("[proceedToFindPropertiesAction] transaction failed:", err);
+    return { error: "Could not advance project status. Please try again." };
+  }
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/research`);
+  revalidatePath("/projects");
+
+  redirect(`/housing-search?project=${projectId}`);
 }

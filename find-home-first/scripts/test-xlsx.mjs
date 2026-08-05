@@ -106,7 +106,7 @@ function applyData(row, alt) { if (alt) row.fill = { type: 'pattern', pattern: '
 const s1 = wb.addWorksheet('Executive Summary');
 s1.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 2 };
 s1.getColumn(1).width = 28; s1.getColumn(2).width = 60;
-s1.addRow(['Find Home First — Market Intelligence Report']).font = { bold: true, size: 14, color: { argb: 'FF173F5F' } };
+s1.addRow(['Find Home First — City Demographic & Opportunity Report']).font = { bold: true, size: 14, color: { argb: 'FF173F5F' } };
 s1.addRow([]);
 [['Project', ATLANTA.projectName],['Market','Atlanta, GA'],['Target Population',ATLANTA.targetPopulation],['Verdict',ATLANTA.verdict],['Overall Score',ATLANTA.overallScore + ' / 100'],['Confidence',ATLANTA.confidence],['Best Program Opportunity',ATLANTA.bestProgramOpportunity],['Largest Blocker',ATLANTA.largestBlocker],['Recommended Next Action',ATLANTA.primaryNextAction],['Report ID',ATLANTA.reportId],['Version','v'+ATLANTA.version],['Generated',new Date(ATLANTA.generatedAt).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})],['Data Through',ATLANTA.dataThroughDate],['Exported',new Date(EXPORTED_AT).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})]].forEach(([l,v],i)=>{
   const r = s1.addRow([l, v]); r.getCell(1).font = {bold:true,size:10}; r.getCell(1).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFE8F1EE'}}; r.getCell(2).alignment={wrapText:true,vertical:'top'}; r.height=22;

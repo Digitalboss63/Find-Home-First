@@ -45,7 +45,7 @@ describe("buildExportFilename", () => {
       generatedAt: "2026-08-03T20:00:00.000Z",
       format: "pdf",
     });
-    expect(f).toBe("Find-Home-First_Atlanta-GA_Veterans_Market-Research_v1_2026-08-03.pdf");
+    expect(f).toBe("Find-Home-First_Atlanta-GA_Veterans_City-Report_v1_2026-08-03.pdf");
   });
 
   it("produces correct xlsx filename", () => {
@@ -57,7 +57,7 @@ describe("buildExportFilename", () => {
       generatedAt: "2026-08-03T20:00:00.000Z",
       format: "xlsx",
     });
-    expect(f).toBe("Find-Home-First_Atlanta-GA_Veterans_Market-Research_v2_2026-08-03.xlsx");
+    expect(f).toBe("Find-Home-First_Atlanta-GA_Veterans_City-Report_v2_2026-08-03.xlsx");
   });
 
   it("sanitizes special characters in market name", () => {
@@ -69,7 +69,7 @@ describe("buildExportFilename", () => {
       generatedAt: "2026-08-03T20:00:00.000Z",
       format: "pdf",
     });
-    expect(f).toMatch(/^Find-Home-First_San-Jos-CA_Chronically-Homeless-Adults_Market-Research_v1_2026-08-03\.pdf$/);
+    expect(f).toMatch(/^Find-Home-First_San-Jos-CA_Chronically-Homeless-Adults_City-Report_v1_2026-08-03\.pdf$/);
     // Must only contain safe characters
     expect(f).toMatch(/^[A-Za-z0-9._-]+$/);
   });

@@ -128,7 +128,7 @@ function buildSummarySheet(wb: ExcelJS.Workbook, input: ExportInput): void {
   setColumnWidths(ws, [28, 60]);
 
   // Title block
-  const titleRow = ws.addRow(["Find Home First — Market Intelligence Report"]);
+  const titleRow = ws.addRow(["Find Home First — City Demographic & Opportunity Report"]);
   titleRow.font = { bold: true, size: 14, color: { argb: BRAND_PRIMARY } };
   titleRow.height = 30;
   ws.mergeCells("A1:B1");

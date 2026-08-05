@@ -1,9 +1,19 @@
+/**
+ * /projects/[id]/research — City Demographic & Opportunity Report
+ *
+ * Primary research experience for a placement project.
+ * Renders the automated City Report (generate, view, export, proceed).
+ *
+ * The manual ResearchWorkspace component is preserved as dormant legacy code
+ * but is not rendered here. The approve/hold/reject server actions remain
+ * intact and available for future use; they are not part of the active flow.
+ */
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireOrganization } from "@/lib/auth";
-import { getProjectById, getMarketResearch } from "@/lib/repository";
-import ResearchWorkspace from "./ResearchWorkspace";
+import { getProjectById } from "@/lib/repository";
+import { CityReportPage } from "./CityReportPage";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -11,7 +21,7 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
-  return { title: `Market Research — Project ${id}` };
+  return { title: `City Report — Project ${id}` };
 }
 
 export const dynamic = "force-dynamic";
@@ -23,11 +33,9 @@ export default async function ResearchPage({ params }: Props) {
   const project = await getProjectById(id, organizationId);
   if (!project) notFound();
 
-  const research = await getMarketResearch(id, organizationId);
-
   return (
-    <div style={{ maxWidth: "56rem", margin: "0 auto", padding: "2rem 1.5rem" }}>
-      <div style={{ marginBottom: "1.5rem" }}>
+    <div style={{ maxWidth: "64rem", margin: "0 auto", padding: "2rem 1.5rem" }}>
+      <div style={{ marginBottom: "1.25rem" }}>
         <Link
           href={`/projects/${id}`}
           style={{ fontSize: "0.875rem", color: "var(--color-action)", textDecoration: "none" }}
@@ -35,7 +43,12 @@ export default async function ResearchPage({ params }: Props) {
           ← Back to Project
         </Link>
       </div>
-      <ResearchWorkspace project={project} research={research} />
+      <CityReportPage
+        projectId={id}
+        projectName={project.name}
+        community={project.community}
+        currentStatus={project.currentStatus}
+      />
     </div>
   );
 }

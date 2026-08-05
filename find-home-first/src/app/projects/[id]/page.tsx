@@ -191,8 +191,6 @@ export default async function ProjectPage({ params }: Props) {
   const openTasks = allTasks.filter((t) => t.status !== "completed");
   const completedTasks = allTasks.filter((t) => t.status === "completed");
 
-  const isResearchStage = project.currentStage === "research";
-
   return (
     <div style={{ maxWidth: "48rem", margin: "0 auto", padding: "2rem 1.5rem" }}>
       {/* Back link */}
@@ -281,15 +279,15 @@ export default async function ProjectPage({ params }: Props) {
       >
         <div>
           <p style={{ fontWeight: 600, color: "var(--color-primary)", margin: "0 0 0.25rem", fontSize: "0.9rem" }}>
-            Market Intelligence Report
+            City Demographic &amp; Opportunity Report
           </p>
           <p style={{ fontSize: "0.8rem", color: "var(--color-text)", opacity: 0.65, margin: 0 }}>
-            Automated analysis of housing need, funding programs, property economics, and recommended next action.
+            City-level analysis of housing need, available programs, property economics, and recommended next steps.
           </p>
         </div>
         <div style={{ display: "flex", gap: "0.625rem", flexWrap: "wrap" }}>
           <Link
-            href={`/projects/${project.id}/market-intelligence`}
+            href={`/projects/${project.id}/research`}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -304,29 +302,8 @@ export default async function ProjectPage({ params }: Props) {
               whiteSpace: "nowrap",
             }}
           >
-            📊 View Report →
+            📊 View City Report →
           </Link>
-          {isResearchStage && (
-            <Link
-              href={`/projects/${project.id}/research`}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.375rem",
-                backgroundColor: "#fff",
-                color: "var(--color-primary)",
-                border: "1px solid var(--color-border)",
-                textDecoration: "none",
-                padding: "0.625rem 1rem",
-                borderRadius: "0.5rem",
-                fontSize: "0.875rem",
-                fontWeight: 600,
-                whiteSpace: "nowrap",
-              }}
-            >
-              Research Workspace
-            </Link>
-          )}
         </div>
       </div>
 
