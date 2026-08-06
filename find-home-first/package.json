@@ -15,7 +15,8 @@
     "test": "vitest run",
     "rentcast:test": "tsx src/lib/rentcast-test.ts",
     "migration:test": "tsx src/lib/migration-live-test.ts",
-    "test:migration-0005": "node scripts/test-migration-0005.mjs"
+    "test:migration-0005": "node scripts/test-migration-0005.mjs",
+    "test:migration-0006": "node scripts/test-migration-0006.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.6.0",
@@ -23,6 +24,7 @@
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
+    "maplibre-gl": "^6.1.0",
     "next": "16.2.10",
     "postgres": "^3.4.9",
     "react": "19.2.4",

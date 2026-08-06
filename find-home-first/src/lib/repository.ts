@@ -155,6 +155,10 @@ export interface PropertySearchDraftView {
   resultsSnapshot: string | null;
   resultsCount: number;
   queryFingerprint: string | null;
+  mapLatitude: string | null;
+  mapLongitude: string | null;
+  mapRadiusMi: number | null;
+  mapMode: string;
 }
 
 export interface PlatformSettingView {
@@ -1039,6 +1043,10 @@ export async function getPropertySearchDraft(
         resultsSnapshot: propertySearchDrafts.resultsSnapshot,
         resultsCount: propertySearchDrafts.resultsCount,
         queryFingerprint: propertySearchDrafts.queryFingerprint,
+        mapLatitude: propertySearchDrafts.mapLatitude,
+        mapLongitude: propertySearchDrafts.mapLongitude,
+        mapRadiusMi: propertySearchDrafts.mapRadiusMi,
+        mapMode: propertySearchDrafts.mapMode,
       })
       .from(propertySearchDrafts)
       .where(
@@ -1068,6 +1076,10 @@ export async function getPropertySearchDraft(
       resultsSnapshot: r.resultsSnapshot,
       resultsCount: r.resultsCount,
       queryFingerprint: r.queryFingerprint,
+      mapLatitude: r.mapLatitude ?? null,
+      mapLongitude: r.mapLongitude ?? null,
+      mapRadiusMi: r.mapRadiusMi ?? null,
+      mapMode: r.mapMode ?? "list",
     };
   } catch {
     console.warn("[repository] getPropertySearchDraft failed");
@@ -1108,6 +1120,10 @@ export async function upsertPropertySearchDraft(
         resultsSnapshot: draft.resultsSnapshot ?? null,
         resultsCount: draft.resultsCount,
         queryFingerprint: draft.queryFingerprint ?? null,
+        mapLatitude: draft.mapLatitude ?? null,
+        mapLongitude: draft.mapLongitude ?? null,
+        mapRadiusMi: draft.mapRadiusMi ?? null,
+        mapMode: draft.mapMode ?? "list",
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
@@ -1132,6 +1148,10 @@ export async function upsertPropertySearchDraft(
           resultsSnapshot: draft.resultsSnapshot ?? null,
           resultsCount: draft.resultsCount,
           queryFingerprint: draft.queryFingerprint ?? null,
+          mapLatitude: draft.mapLatitude ?? null,
+          mapLongitude: draft.mapLongitude ?? null,
+          mapRadiusMi: draft.mapRadiusMi ?? null,
+          mapMode: draft.mapMode ?? "list",
           updatedAt: new Date(),
         },
       });

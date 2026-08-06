@@ -308,6 +308,14 @@ export const propertySearchDrafts = pgTable(
      * Used to detect stale results when criteria change.
      */
     queryFingerprint: text("query_fingerprint"),
+    /** Last map search center latitude (for "Search This Area" persistence). */
+    mapLatitude: numeric("map_latitude", { precision: 9, scale: 6 }),
+    /** Last map search center longitude. */
+    mapLongitude: numeric("map_longitude", { precision: 9, scale: 6 }),
+    /** Last map search radius in miles (5 | 10 | 25). */
+    mapRadiusMi: integer("map_radius_mi"),
+    /** "map" | "list" — last selected view mode. */
+    mapMode: text("map_mode").default("list"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

@@ -230,6 +230,10 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
       resultsSnapshot: null,
       resultsCount: 0,
       queryFingerprint: null,
+      mapLatitude: null,
+      mapLongitude: null,
+      mapRadiusMi: null,
+      mapMode: "list",
     };
   }
 

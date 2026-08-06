@@ -279,6 +279,79 @@ export async function searchPropertiesAction(
   return { listings: result.listings };
 }
 
+// --- Search This Area ---------------------------------------------------------
+
+export interface SearchThisAreaResult {
+  listings: RentCastListing[];
+  error?: string;
+  unconfigured?: boolean;
+}
+
+/**
+ * Search RentCast using map center coordinates and radius.
+ * Uses latitude/longitude/radius params instead of city/state/ZIP.
+ * City, state, and ZIP are omitted to avoid conflicting location parameters.
+ * All non-location filters (property type, beds, baths, rent, status) are preserved.
+ * The existing eligibility guard (completed City Report) is enforced.
+ */
+export async function searchThisAreaAction(input: {
+  projectId: string;
+  latitude: number;
+  longitude: number;
+  radiusMiles: number;
+  propertyType?: string;
+  minBedrooms?: string;
+  minBathrooms?: string;
+  maxRent?: string;
+  maxDaysListed?: string;
+  listingStatus?: string;
+}): Promise<SearchThisAreaResult> {
+  let ctx: EligibilityContext;
+  try {
+    ctx = await requireEligibleProject(input.projectId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Project not eligible.";
+    return { listings: [], error: msg };
+  }
+  const { organizationId } = ctx;
+
+  const rl = checkRateLimit(`search:${organizationId}`, 5);
+  if (!rl.allowed) {
+    return { listings: [], error: `Too many searches. Try again in ${rl.resetInSeconds} seconds.` };
+  }
+
+  if (!isRentCastConfigured()) {
+    return { listings: [], unconfigured: true, error: "Property search is not yet configured." };
+  }
+
+  // Validate radius to supported values only
+  const supportedRadii = [5, 10, 25] as const;
+  const radius = supportedRadii.includes(input.radiusMiles as 5 | 10 | 25)
+    ? input.radiusMiles
+    : 10;
+
+  const params: RentCastSearchParams = {
+    // Location: circular area — city/state/ZIP intentionally omitted
+    latitude:    input.latitude,
+    longitude:   input.longitude,
+    radius:      radius,
+    // Non-location filters preserved
+    propertyType: input.propertyType || undefined,
+    minBedrooms:  input.minBedrooms ? parseInt(input.minBedrooms, 10) : undefined,
+    minBathrooms: input.minBathrooms ? parseFloat(input.minBathrooms) : undefined,
+    maxRent:      input.maxRent ? parseInt(input.maxRent, 10) : undefined,
+    maxDaysOld:   input.maxDaysListed ? parseInt(input.maxDaysListed, 10) : undefined,
+    status:       normalizeListingStatus(input.listingStatus || ""),
+    limit: 25,
+  };
+
+  const result = await searchRentalListings(params);
+  if (result.error) {
+    return { listings: [], error: "The area search could not be completed. Please try again." };
+  }
+  return { listings: result.listings };
+}
+
 // --- Owner enrichment ---------------------------------------------------------
 
 export interface OwnerResult {

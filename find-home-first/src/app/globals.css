@@ -1,35 +1,35 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
-/* ══════════════════════════════════════════════════════════════════════
-   FIND HOME FIRST — Design System
-   Secure Path Home color palette · Tailwind v4 @theme tokens
-   ──────────────────────────────────────────────────────────────────────
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   FIND HOME FIRST â€” Design System
+   Secure Path Home color palette Â· Tailwind v4 @theme tokens
+   â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    60% neutral backgrounds (--color-background, --color-surface-soft)
    30% blue / teal        (--color-primary, --color-secondary)
    10% orange / gold      (--color-action, --color-highlight)
-   ══════════════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 @theme inline {
-  /* ── Brand palette ─────────────────────────────────────────────── */
-  --color-primary:         #173F5F;   /* Deep blue  — nav, headings, brand anchors          */
-  --color-secondary:       #2F6F68;   /* Teal       — active stages, progress, secondary CTAs */
-  --color-action:          #B45309;   /* Orange     — primary CTA only                       */
+  /* â”€â”€ Brand palette â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  --color-primary:         #173F5F;   /* Deep blue  â€” nav, headings, brand anchors          */
+  --color-secondary:       #2F6F68;   /* Teal       â€” active stages, progress, secondary CTAs */
+  --color-action:          #B45309;   /* Orange     â€” primary CTA only                       */
   --color-action-hover:    #923F07;
   --color-action-active:   #72300A;
-  --color-highlight:       #F2C14E;   /* Gold       — attention indicators; use on dark bg   */
-  --color-background:      #F7F5EF;   /* Warm ivory — primary page background                */
-  --color-surface-soft:    #E8F1EE;   /* Pale teal  — supporting sections, inset panels      */
-  --color-text:            #1F2933;   /* Charcoal   — body text                              */
-  --color-text-muted:      #5C6773;   /* Medium grey — secondary labels, muted status text   */
-  --color-border:          #CBD5D8;   /* Cool grey  — dividers, input borders, card edges    */
-  --color-error:           #B42318;   /* Red        — validation errors only                 */
+  --color-highlight:       #F2C14E;   /* Gold       â€” attention indicators; use on dark bg   */
+  --color-background:      #F7F5EF;   /* Warm ivory â€” primary page background                */
+  --color-surface-soft:    #E8F1EE;   /* Pale teal  â€” supporting sections, inset panels      */
+  --color-text:            #1F2933;   /* Charcoal   â€” body text                              */
+  --color-text-muted:      #5C6773;   /* Medium grey â€” secondary labels, muted status text   */
+  --color-border:          #CBD5D8;   /* Cool grey  â€” dividers, input borders, card edges    */
+  --color-error:           #B42318;   /* Red        â€” validation errors only                 */
 
-  /* ── Typography ─────────────────────────────────────────────────── */
+  /* â”€â”€ Typography â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-/* ── Base styles ─────────────────────────────────────────────────── */
+/* â”€â”€ Base styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 html {
   font-family: var(--font-sans), system-ui, Arial, sans-serif;
 }
@@ -40,7 +40,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Skip link (WCAG 2.4.1) ─────────────────────────────────────── */
+/* â”€â”€ Skip link (WCAG 2.4.1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .skip-link {
   position: absolute;
   top: -9999px;
@@ -59,7 +59,7 @@ body {
   outline-offset: 2px;
 }
 
-/* ── Screen-reader only ─────────────────────────────────────────── */
+/* â”€â”€ Screen-reader only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -72,14 +72,14 @@ body {
   border: 0;
 }
 
-/* ── Focus-visible ring (WCAG 2.4.7 / 2.4.11) ──────────────────── */
+/* â”€â”€ Focus-visible ring (WCAG 2.4.7 / 2.4.11) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 :focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 3px;
   border-radius: 3px;
 }
 
-/* ── Reduced motion (WCAG 2.3.3) ────────────────────────────────── */
+/* â”€â”€ Reduced motion (WCAG 2.3.3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -89,11 +89,11 @@ body {
   }
 }
 
-/* ── Print styles — City Demographic & Opportunity Report ──────── */
+/* â”€â”€ Print styles â€” City Demographic & Opportunity Report â”€â”€â”€â”€â”€â”€â”€â”€ */
 /*
  * These rules apply only when printing or using browser Print to PDF.
  * They target elements by data-* attributes set in the report components.
- * Only .market-report source links get the URL-printed treatment —
+ * Only .market-report source links get the URL-printed treatment â€”
  * not every anchor on the page.
  */
 @media print {
@@ -151,7 +151,7 @@ body {
     page-break-inside: avoid;
   }
 
-  /* Source links only — print the URL after the link text */
+  /* Source links only â€” print the URL after the link text */
   .market-report .source-link[href]::after {
     content: " (" attr(href) ")";
     font-size: 0.7em;
@@ -165,7 +165,7 @@ body {
     display: none !important;
   }
 
-  /* How To Use section — always expanded in print */
+  /* How To Use section â€” always expanded in print */
   [data-howto-collapsed] {
     display: block !important;
   }
@@ -175,4 +175,12 @@ body {
     box-shadow: none !important;
     text-shadow: none !important;
   }
+}
+
+/* -- Map/List responsive layout --
+ * The toggle wrapper is hidden on desktop; panel show/hide is JS-driven
+ * via mobileView state in PropertyResultsLayout.
+ */
+@media (min-width: 768px) {
+  .map-list-toggle-wrapper { display: none !important; }
 }

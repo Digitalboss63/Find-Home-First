@@ -4,6 +4,7 @@ import {
   useMemo,
   useState,
   useRef,
+  useEffect,
   useTransition,
   useCallback,
 } from "react";
@@ -19,7 +20,9 @@ import {
   saveLeadAction,
   linkOwnerToLeadAction,
   updateLeadStageAction,
+  searchThisAreaAction,
 } from "./actions";
+import { PropertyResultsLayout } from "./PropertyResultsLayout";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -119,6 +122,11 @@ function formatDate(iso: string | null) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 /** Debounce: fire fn only after ms ms of silence. */
@@ -317,17 +325,34 @@ function OwnerPanel({
 function ListingCard({
   listing,
   projectId,
+  isSelected,
+  onSelect,
+  savedLeadIds,
 }: {
   listing: RentCastListing;
   projectId: string;
+  isSelected: boolean;
+  onSelect: () => void;
+  savedLeadIds: Set<string>;
 }) {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [leadId, setLeadId] = useState<string | null>(null);
+  const cardRef = useRef<HTMLLIElement>(null);
+
+  useEffect(() => {
+    if (isSelected && cardRef.current) {
+      cardRef.current.scrollIntoView({
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
+        block: "nearest",
+      });
+    }
+  }, [isSelected]);
 
   // Pre-enrichment opportunity score from listing data only
   const preScore = useMemo(() => scoreFromListing(listing), [listing]);
+  const isSaved = listing.id ? savedLeadIds.has(listing.id) : false;
 
   function handleSave() {
     startTransition(async () => {
@@ -378,11 +403,14 @@ function ListingCard({
 
   return (
     <li
+      ref={cardRef}
       className="rounded-xl overflow-hidden"
       style={{
         backgroundColor: "#fff",
-        border: "1px solid var(--color-border)",
+        border: isSelected ? "2px solid var(--color-primary)" : "1px solid var(--color-border)",
+        cursor: "pointer",
       }}
+      onClick={onSelect}
     >
       <div className="p-5">
         {/* Header row */}
@@ -393,6 +421,16 @@ function ListingCard({
               style={{ color: "var(--color-primary)" }}
             >
               {listing.formattedAddress || listing.addressLine1}
+              {isSaved && (
+                <span
+                  className="ml-1.5 text-xs font-normal"
+                  style={{ color: "#D97706" }}
+                  title="Saved to pipeline"
+                  aria-label="Saved"
+                >
+                  ★
+                </span>
+              )}
             </h3>
             {propertyLabel && (
               <p
@@ -884,6 +922,16 @@ export default function PropertySearchClient({
   const [isPending, startTransition] = useTransition();
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
+  // ── Map state ────────────────────────────────────────────────────────────
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(
+    initialDraft.mapLatitude && initialDraft.mapLongitude
+      ? { lat: parseFloat(initialDraft.mapLatitude), lng: parseFloat(initialDraft.mapLongitude) }
+      : null
+  );
+  const [mapRadius, setMapRadius] = useState<number>(initialDraft.mapRadiusMi ?? 10);
+  const [isAreaSearching, startAreaSearch] = useTransition();
+
   // ── Draft helpers ────────────────────────────────────────────────────────
   function currentDraft(): PropertySearchDraftView {
     return {
@@ -902,6 +950,10 @@ export default function PropertySearchClient({
       resultsSnapshot: initialDraft.resultsSnapshot,
       resultsCount: initialDraft.resultsCount,
       queryFingerprint: initialDraft.queryFingerprint,
+      mapLatitude: initialDraft.mapLatitude,
+      mapLongitude: initialDraft.mapLongitude,
+      mapRadiusMi: initialDraft.mapRadiusMi,
+      mapMode: initialDraft.mapMode,
     };
   }
 
@@ -979,6 +1031,47 @@ export default function PropertySearchClient({
       minBathrooms || maxRent || maxDaysListed),
     [city, state, zipCode, propertyType, minBedrooms, minBathrooms, maxRent, maxDaysListed]
   );
+
+  // ── Saved leads set (for map indicator) ─────────────────────────────────
+  const savedLeadIds = useMemo(
+    () => new Set(savedLeads.map(l => l.externalId ?? l.id)),
+    [savedLeads]
+  );
+
+  // ── Search This Area (map-driven) ────────────────────────────────────────
+  function handleSearchThisArea(lat: number, lng: number, radiusMi: number) {
+    setMapCenter({ lat, lng });
+    setMapRadius(radiusMi);
+    // Persist map state to draft
+    startTransition(async () => {
+      await saveDraftAction({
+        ...currentDraft(),
+        mapLatitude: String(lat),
+        mapLongitude: String(lng),
+        mapRadiusMi: radiusMi,
+      });
+    });
+    startAreaSearch(async () => {
+      const result = await searchThisAreaAction({
+        projectId,
+        latitude: lat,
+        longitude: lng,
+        radiusMiles: radiusMi,
+        propertyType: propertyType || undefined,
+        minBedrooms: minBedrooms || undefined,
+        minBathrooms: minBathrooms || undefined,
+        maxRent: maxRent || undefined,
+        maxDaysListed: maxDaysListed || undefined,
+        listingStatus: listingStatus || undefined,
+      });
+      if (result.error) {
+        setSearchError(result.error);
+      } else {
+        setResults(result.listings);
+        setSubmitted(true);
+      }
+    });
+  }
 
   const lastSearchLabel = initialDraft.lastSearchAt
     ? `Last searched ${new Date(initialDraft.lastSearchAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
@@ -1305,59 +1398,74 @@ export default function PropertySearchClient({
 
       {/* ── Results ──────────────────────────────────────────────────── */}
       {submitted ? (
-        <section aria-labelledby="results-heading">
-          <h2
-            id="results-heading"
-            className="text-base font-semibold mb-4"
-            style={{ color: "var(--color-primary)" }}
-          >
-            {isSearching
-              ? "Searching…"
-              : results.length === 0
-              ? "No properties found"
-              : `Results — ${results.length} propert${results.length === 1 ? "y" : "ies"}`}
-          </h2>
+        <PropertyResultsLayout
+          listings={results}
+          savedLeadIds={savedLeadIds}
+          selectedId={selectedId}
+          onSelectListing={setSelectedId}
+          onSearchThisArea={handleSearchThisArea}
+          initialCenter={mapCenter}
+          initialRadius={mapRadius}
+          isSearching={isSearching || isAreaSearching}
+          listContent={
+            <section aria-labelledby="results-heading">
+              <h2
+                id="results-heading"
+                className="text-base font-semibold mb-4"
+                style={{ color: "var(--color-primary)" }}
+              >
+                {isSearching || isAreaSearching
+                  ? "Searching…"
+                  : results.length === 0
+                  ? "No properties found"
+                  : `Results — ${results.length} propert${results.length === 1 ? "y" : "ies"}`}
+              </h2>
 
-          {searchError && (
-            <div
-              className="rounded-xl px-5 py-4 mb-4 text-sm"
-              style={{
-                backgroundColor: "#FEF2F2",
-                border: "1px solid #FECACA",
-                color: "#991B1B",
-              }}
-              role="alert"
-            >
-              {searchError}
-            </div>
-          )}
+              {searchError && (
+                <div
+                  className="rounded-xl px-5 py-4 mb-4 text-sm"
+                  style={{
+                    backgroundColor: "#FEF2F2",
+                    border: "1px solid #FECACA",
+                    color: "#991B1B",
+                  }}
+                  role="alert"
+                >
+                  {searchError}
+                </div>
+              )}
 
-          {!isSearching && results.length === 0 && !searchError && (
-            <div
-              className="rounded-xl px-6 py-10 text-center"
-              style={{
-                backgroundColor: "var(--color-surface-soft)",
-                border: "1px solid var(--color-border)",
-              }}
-            >
-              <p className="text-sm mb-2" style={{ color: "var(--color-text)", opacity: 0.65 }}>
-                No properties matched your criteria. Try broadening your search.
-              </p>
-            </div>
-          )}
+              {!isSearching && !isAreaSearching && results.length === 0 && !searchError && (
+                <div
+                  className="rounded-xl px-6 py-10 text-center"
+                  style={{
+                    backgroundColor: "var(--color-surface-soft)",
+                    border: "1px solid var(--color-border)",
+                  }}
+                >
+                  <p className="text-sm mb-2" style={{ color: "var(--color-text)", opacity: 0.65 }}>
+                    No properties matched your criteria. Try broadening your search.
+                  </p>
+                </div>
+              )}
 
-          {!isSearching && results.length > 0 && (
-            <ul className="space-y-4" aria-label="Property search results">
-              {results.map((listing) => (
-                <ListingCard
-                  key={listing.id || listing.formattedAddress}
-                  listing={listing}
-                  projectId={projectId}
-                />
-              ))}
-            </ul>
-          )}
-        </section>
+              {!isSearching && !isAreaSearching && results.length > 0 && (
+                <ul className="space-y-4" aria-label="Property search results">
+                  {results.map((listing) => (
+                    <ListingCard
+                      key={listing.id || listing.formattedAddress}
+                      listing={listing}
+                      projectId={projectId}
+                      isSelected={selectedId === listing.id}
+                      onSelect={() => setSelectedId(prev => prev === listing.id ? null : listing.id)}
+                      savedLeadIds={savedLeadIds}
+                    />
+                  ))}
+                </ul>
+              )}
+            </section>
+          }
+        />
       ) : (
         /* Pre-search prompt */
         <div

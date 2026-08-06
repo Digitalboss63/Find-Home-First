@@ -57,6 +57,10 @@ const baseDraft = {
   resultsSnapshot: JSON.stringify([{ id: "rc-1", formattedAddress: "123 Main" }]),
   resultsCount: 1,
   queryFingerprint: '{"city":"Atlanta","state":"GA"}',
+  mapLatitude: null,
+  mapLongitude: null,
+  mapRadiusMi: null,
+  mapMode: "list",
 };
 
 const projectDraft = { ...baseDraft, projectId: "proj-abc" };
