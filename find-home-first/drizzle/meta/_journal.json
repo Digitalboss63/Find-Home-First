@@ -50,6 +50,13 @@
       "when": 1785400000000,
       "tag": "0006_map-search-state",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786034278354,
+      "tag": "0007_owner-outreach",
+      "breakpoints": true
     }
   ]
 }

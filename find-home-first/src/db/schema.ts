@@ -141,6 +141,11 @@ export const propertyOwners = pgTable(
     leadSource: text("lead_source").notNull().default("manual"),
     rentcastPropertyId: text("rentcast_property_id"),
     notes: text("notes"),
+    // Owner contact fields (Phase 3)
+    preferredContactMethod: text("preferred_contact_method"),
+    phoneVerifiedAt: timestamp("phone_verified_at", { withTimezone: true }),
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+    contactSource: text("contact_source"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -161,6 +166,10 @@ export const propertyOwners = pgTable(
 // Replaces the old property_candidates (listing-aggregator model).
 // Acquisition pipeline stage lives here.
 
+// NOTE: The authoritative UI pipeline uses an 8-stage set defined in src/lib/lead-pipeline.ts:
+// researching | ready_for_outreach | contacted | follow_up
+// | interested | negotiating | agreement_signed | not_interested
+// The ACQUISITION_STAGES below is kept for legacy type compatibility — do NOT change it.
 export const ACQUISITION_STAGES = [
   "lead_identified",
   "owner_research",
@@ -238,6 +247,17 @@ export const propertyLeads = pgTable(
     suitabilityNotes: text("suitability_notes"),
     followUpDate: date("follow_up_date"),
     notes: text("notes"),
+    // Negotiation fields (Phase 3: Owner Outreach)
+    proposedMonthlyRent: numeric("proposed_monthly_rent", { precision: 10, scale: 2 }),
+    ownerAskingRent: numeric("owner_asking_rent", { precision: 10, scale: 2 }),
+    proposedDeposit: numeric("proposed_deposit", { precision: 10, scale: 2 }),
+    proposedLeaseTermMonths: integer("proposed_lease_term_months"),
+    proposedAgreementType: text("proposed_agreement_type"),
+    utilitiesResponsibility: text("utilities_responsibility"),
+    furnishingResponsibility: text("furnishing_responsibility"),
+    maintenanceResponsibility: text("maintenance_responsibility"),
+    negotiationSummary: text("negotiation_summary"),
+    lastStageChangedAt: timestamp("last_stage_changed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -367,6 +387,10 @@ export const properties = pgTable(
     /** "available" | "preparing" | "occupied" | "unavailable" */
     readinessStatus: text("readiness_status").notNull().default("available"),
     notes: text("notes"),
+    // Agreement fields (Phase 3: Owner Outreach)
+    agreementStatus: text("agreement_status").default("pending"),
+    agreementSignedDate: date("agreement_signed_date"),
+    agreementReference: text("agreement_reference"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -506,6 +530,9 @@ export const tasks = pgTable(
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "set null",
     }),
+    leadId: uuid("lead_id").references(() => propertyLeads.id, {
+      onDelete: "set null",
+    }),
     title: text("title").notNull(),
     description: text("description"),
     dueDate: date("due_date"),
@@ -522,8 +549,54 @@ export const tasks = pgTable(
   (t) => [
     index("tasks_org_idx").on(t.organizationId),
     index("tasks_project_idx").on(t.projectId),
+    index("tasks_lead_idx").on(t.leadId),
     index("tasks_status_idx").on(t.status),
     index("tasks_due_idx").on(t.dueDate),
+  ]
+);
+
+// ─── Property Lead Activities ─────────────────────────────────────────────────
+//
+// Append-only outreach/stage/negotiation log for property leads.
+// Never updated — only inserted and read.
+
+export const propertyLeadActivities = pgTable(
+  "property_lead_activities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id")
+      .notNull()
+      .references(() => propertyLeads.id, { onDelete: "cascade" }),
+    ownerId: uuid("owner_id").references(() => propertyOwners.id, {
+      onDelete: "set null",
+    }),
+    /** "outreach" | "stage_change" | "note" | "negotiation" | "agreement" */
+    activityType: text("activity_type").notNull(),
+    /** "phone" | "email" | "text" | "mail" | "in_person" */
+    contactMethod: text("contact_method"),
+    outcome: text("outcome"),
+    notes: text("notes"),
+    stageBefore: text("stage_before"),
+    stageAfter: text("stage_after"),
+    nextFollowUpAt: date("next_follow_up_at"),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("pla_lead_idx").on(t.leadId),
+    index("pla_org_idx").on(t.organizationId),
+    index("pla_project_idx").on(t.projectId),
+    index("pla_type_idx").on(t.activityType),
   ]
 );
 

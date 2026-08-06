@@ -19,10 +19,14 @@ import {
   fetchOwnerAction,
   saveLeadAction,
   linkOwnerToLeadAction,
-  updateLeadStageAction,
   searchThisAreaAction,
 } from "./actions";
 import { PropertyResultsLayout } from "./PropertyResultsLayout";
+import {
+  PIPELINE_STAGE_LABELS,
+  TERMINAL_STAGES,
+} from "@/lib/lead-pipeline";
+import { LeadWorkspace } from "./LeadWorkspace";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -72,16 +76,7 @@ const MANUAL_SOURCES = [
   { value: "other", label: "Other" },
 ];
 
-const PIPELINE_STAGES = [
-  { value: "researching", label: "Researching" },
-  { value: "ready_for_outreach", label: "Ready for Outreach" },
-  { value: "contacted", label: "Contacted" },
-  { value: "follow_up", label: "Follow-up" },
-  { value: "interested", label: "Interested" },
-  { value: "negotiating", label: "Negotiating" },
-  { value: "agreement_signed", label: "Agreement Signed" },
-  { value: "not_interested", label: "Not Interested" },
-];
+// PIPELINE_STAGES is imported from @/lib/lead-pipeline above
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
@@ -754,7 +749,7 @@ function ManualLeadForm({ projectId }: { projectId: string }) {
   );
 }
 
-// ─── Saved Leads Panel ────────────────────────────────────────────────────────
+// ─── Lead Workspace ───────────────────────────────────────────────────────────
 
 function SavedLeadsPanel({
   leads,
@@ -765,15 +760,12 @@ function SavedLeadsPanel({
 }) {
   const [open, setOpen] = useState(false);
   const [stageUpdates, setStageUpdates] = useState<Record<string, string>>({});
-  const [, startTransition] = useTransition();
+  const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
 
   if (leads.length === 0) return null;
 
   function handleStageChange(leadId: string, newStage: string) {
     setStageUpdates((prev) => ({ ...prev, [leadId]: newStage }));
-    startTransition(async () => {
-      await updateLeadStageAction(leadId, projectId, newStage);
-    });
   }
 
   return (
@@ -803,7 +795,8 @@ function SavedLeadsPanel({
           <ul id="saved-leads-list" className="divide-y bg-white" style={{ borderTop: "1px solid var(--color-border)" }}>
             {leads.map((lead) => {
               const currentStage = stageUpdates[lead.id] ?? lead.acquisitionStage;
-              const stageLabel = PIPELINE_STAGES.find((s) => s.value === currentStage)?.label ?? currentStage;
+              const stageLabel = PIPELINE_STAGE_LABELS[currentStage] ?? currentStage;
+              const isExpanded = expandedLeadId === lead.id;
               return (
                 <li key={lead.id} className="px-5 py-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -839,26 +832,42 @@ function SavedLeadsPanel({
                             Score: {lead.opportunityScore}
                           </span>
                         )}
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full"
+                          style={{
+                            backgroundColor: TERMINAL_STAGES.has(currentStage) ? "#FEF3C7" : "var(--color-surface-soft)",
+                            border: "1px solid var(--color-border)",
+                            color: TERMINAL_STAGES.has(currentStage) ? "#92400E" : "var(--color-secondary)",
+                          }}
+                        >
+                          {stageLabel}
+                        </span>
                       </div>
                     </div>
                     <div className="shrink-0">
-                      <label htmlFor={`stage-${lead.id}`} className="sr-only">Pipeline stage for {lead.address}</label>
-                      <select
-                        id={`stage-${lead.id}`}
-                        value={currentStage}
-                        onChange={(e) => handleStageChange(lead.id, e.target.value)}
-                        style={{ ...fieldStyle, width: "auto", fontSize: "0.75rem" }}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedLeadId(isExpanded ? null : lead.id)}
+                        className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                        style={{
+                          border: "1px solid var(--color-border)",
+                          backgroundColor: isExpanded ? "var(--color-primary)" : "#fff",
+                          color: isExpanded ? "#fff" : "var(--color-secondary)",
+                          cursor: "pointer",
+                        }}
+                        aria-expanded={isExpanded}
                       >
-                        {PIPELINE_STAGES.map((s) => (
-                          <option key={s.value} value={s.value}>{s.label}</option>
-                        ))}
-                        {/* Show current stage if not in pipeline stages list */}
-                        {!PIPELINE_STAGES.find((s) => s.value === currentStage) && (
-                          <option value={currentStage}>{stageLabel}</option>
-                        )}
-                      </select>
+                        {isExpanded ? "Close ▲" : "Workspace ▼"}
+                      </button>
                     </div>
                   </div>
+                  {isExpanded && (
+                    <LeadWorkspace
+                      lead={{ ...lead, acquisitionStage: currentStage }}
+                      projectId={projectId}
+                      onStageChange={handleStageChange}
+                    />
+                  )}
                 </li>
               );
             })}

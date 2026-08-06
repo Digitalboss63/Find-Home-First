@@ -17,10 +17,23 @@
  * all remain fully operational.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import type { RentCastListing } from "@/lib/rentcast";
 import { MapListToggle } from "./MapListToggle";
+
+// ── useSyncExternalStore for isMobile — avoids SSR/client hydration mismatch ──
+function subscribeMobile(cb: () => void) {
+  const mq = window.matchMedia("(max-width: 767px)");
+  mq.addEventListener("change", cb);
+  return () => mq.removeEventListener("change", cb);
+}
+function getSnapshotMobile() {
+  return window.matchMedia("(max-width: 767px)").matches;
+}
+function getServerSnapshotMobile() {
+  return false;
+}
 
 // Load PropertyMap only on the client (contains maplibre-gl + CSS import)
 const PropertyMap = dynamic(
@@ -53,20 +66,8 @@ export function PropertyResultsLayout({
 }: Props) {
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
   const [mapFailed, setMapFailed] = useState(false);
-  // Track whether we are on a mobile viewport
-  // Initialize isMobile lazily — avoids calling setState synchronously inside an effect.
-  // The initializer runs once on mount; the effect then subscribes to future changes.
-  const [isMobile, setIsMobile] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia("(max-width: 767px)").matches;
-  });
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
+  // Track whether we are on a mobile viewport — useSyncExternalStore avoids SSR/client mismatch.
+  const isMobile = useSyncExternalStore(subscribeMobile, getSnapshotMobile, getServerSnapshotMobile);
 
   const handleMapError = useCallback(() => {
     setMapFailed(true);
