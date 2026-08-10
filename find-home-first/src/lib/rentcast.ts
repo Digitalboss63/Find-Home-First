@@ -261,13 +261,33 @@ export async function getOwnerByPropertyId(
     const data = (await rentcastFetch(`/properties/${encodeURIComponent(propertyId)}`, {})) as Record<string, unknown>;
 
     const propertyAddr = String(data.formattedAddress ?? data.addressLine1 ?? "");
-    const mailingAddr = data.owner != null && typeof data.owner === "object"
-      ? String((data.owner as Record<string, unknown>).mailingAddress ?? "")
-      : "";
+
+    // RentCast returns mailingAddress as either a plain string or a structured
+    // address object { addressLine1, city, state, zipCode }. Format either form
+    // into a single readable string; String() on an object yields "[object Object]".
+    function formatMailingAddress(raw: unknown): string {
+      if (!raw) return "";
+      if (typeof raw === "string") return raw;
+      if (typeof raw === "object") {
+        const a = raw as Record<string, unknown>;
+        const parts = [
+          a.addressLine1 ?? a.street ?? "",
+          a.city ?? "",
+          a.state ?? "",
+          a.zipCode ?? a.zip ?? "",
+        ].map(p => String(p).trim()).filter(Boolean);
+        return parts.join(", ");
+      }
+      return String(raw);
+    }
 
     const ownerData = data.owner != null && typeof data.owner === "object"
       ? (data.owner as Record<string, unknown>)
       : null;
+
+    const mailingAddr = ownerData
+      ? formatMailingAddress(ownerData.mailingAddress)
+      : "";
 
     const owner: RentCastOwner = {
       id: String(data.id ?? propertyId),

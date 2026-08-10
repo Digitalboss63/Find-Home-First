@@ -298,7 +298,7 @@ function OwnerPanel({
               >
                 <span aria-hidden="true" style={{ color: "var(--color-secondary)" }}>●</span>
                 {sig.label}
-                {sig.value && <span style={{ opacity: 0.55 }}> ({sig.value})</span>}
+                {sig.value && typeof sig.value === "string" && <span style={{ opacity: 0.55 }}> ({sig.value})</span>}
               </li>
             ))}
           </ul>
