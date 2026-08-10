@@ -2,24 +2,36 @@ import type { NextConfig } from "next";
 import fs from "fs";
 import path from "path";
 
-// Copy maplibre-gl worker to public/ so setWorkerUrl("/maplibre-worker.mjs")
-// resolves correctly from any page. MapLibre GL v6 is ESM-only; bundlers
-// (Next.js/webpack/Turbopack) cannot auto-resolve the worker from
-// import.meta.url inside the bundle graph — this is the documented fix.
-// Runs at build time; safe to run repeatedly (idempotent copy).
+// Copy MapLibre GL v6 worker files to public/ at build time.
+//
+// maplibre-gl-worker.mjs  (~19 KB)  → public/maplibre-worker.mjs
+// maplibre-gl-shared.mjs  (~479 KB) → public/maplibre-gl-shared.mjs
+//
+// The worker entry point is served as /maplibre-worker.mjs (registered via
+// setWorkerUrl in PropertyMap.tsx). The worker contains a bare ESM import:
+//   import { ... } from "./maplibre-gl-shared.mjs"
+// The browser resolves that relative to the worker URL, so it fetches
+// /maplibre-gl-shared.mjs — the shared module must be at that exact path.
+// Both files must be present or tiles never decode and the map stays blank.
 function copyMaplibreWorker() {
   try {
-    const workerSrc = path.resolve(
-      "node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs"
-    );
+    const distDir = path.resolve("node_modules/maplibre-gl/dist");
     const publicDir = path.resolve("public");
-    const workerDst = path.join(publicDir, "maplibre-worker.mjs");
     if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true });
-    fs.copyFileSync(workerSrc, workerDst);
+    // Worker entry — registered via setWorkerUrl("/maplibre-worker.mjs")
+    fs.copyFileSync(
+      path.join(distDir, "maplibre-gl-worker.mjs"),
+      path.join(publicDir, "maplibre-worker.mjs")
+    );
+    // Shared module — worker imports this as "./maplibre-gl-shared.mjs"
+    // Must keep this exact filename so the relative import resolves correctly
+    fs.copyFileSync(
+      path.join(distDir, "maplibre-gl-shared.mjs"),
+      path.join(publicDir, "maplibre-gl-shared.mjs")
+    );
   } catch {
-    // Non-fatal: worker copy failure surfaces at runtime as blank tiles,
-    // not a build crash. The missing-worker case is already handled by
-    // the existing onMapError() fallback.
+    // Non-fatal at build time; surfaces as blank map tiles at runtime.
+    // The existing onMapError() fallback hides the map and keeps the list usable.
   }
 }
 

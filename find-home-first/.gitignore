@@ -45,5 +45,6 @@ scripts/_pdf-timeout-test.mjs
 scripts/_pdf-stream-test.mjs
 scripts/_excel-verify.mjs
 
-# MapLibre GL v6 worker (copied at build time by next.config.ts)
+# MapLibre GL v6 worker files (copied at build time by next.config.ts)
 public/maplibre-worker.mjs
+public/maplibre-gl-shared.mjs
