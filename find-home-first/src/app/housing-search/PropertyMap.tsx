@@ -103,16 +103,24 @@ export function PropertyMap({
 
     (async () => {
       try {
-        // Check WebGL support before attempting to create the map
+        // MapLibre GL v6 requires WebGL2 (v1 support was dropped in v6.0.0).
+        // Test webgl2 explicitly — a WebGL1-only context passes the old check
+        // but causes blank tiles because the renderer silently fails.
         const canvas = document.createElement("canvas");
-        const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
-        if (!gl) {
+        const gl2 = canvas.getContext("webgl2");
+        if (!gl2) {
           if (isMounted.current) onMapError();
           return;
         }
 
         const maplibre = await import("maplibre-gl");
         if (!containerRef.current || !isMounted.current) return;
+
+        // MapLibre GL v6 is ESM-only. Bundlers (Next.js/webpack/Turbopack) cannot
+        // auto-resolve the worker file from import.meta.url inside the bundle graph.
+        // setWorkerUrl() must be called before new Map() or tiles never decode.
+        // The worker file is copied to the public directory at build time via next.config.
+        maplibre.setWorkerUrl("/maplibre-worker.mjs");
 
         // Determine initial center from props, existing results, or fallback
         let center: [number, number] = [DEFAULT_CENTER.lng, DEFAULT_CENTER.lat];
