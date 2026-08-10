@@ -323,12 +323,14 @@ function ListingCard({
   isSelected,
   onSelect,
   savedLeadIds,
+  onSaved,
 }: {
   listing: RentCastListing;
   projectId: string;
   isSelected: boolean;
   onSelect: () => void;
   savedLeadIds: Set<string>;
+  onSaved?: (leadId: string) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -381,7 +383,11 @@ function ListingCard({
         if (result.leadId) setLeadId(result.leadId);
       } else if (result.ok) {
         setSaveMsg("Saved to your property leads.");
-        if (result.leadId) setLeadId(result.leadId);
+        if (result.leadId) {
+          setLeadId(result.leadId);
+          // Notify parent so the ★ appears immediately without a page reload
+          onSaved?.(result.leadId);
+        }
       } else {
         setSaveMsg(result.error ?? "Could not save.");
       }
@@ -904,11 +910,14 @@ function parseSnapshot(snapshot: string | null): RentCastListing[] {
 export default function PropertySearchClient({
   initialDraft,
   savedLeadCount,
-  savedLeads,
+  savedLeads: initialSavedLeads,
   rentCastConfigured,
   projectId,
   hasCompletedReport,
 }: Props) {
+  // ── Saved leads — tracked as state so the ★ appears immediately on save ──
+  const [savedLeads, setSavedLeads] = useState<PropertyLeadView[]>(initialSavedLeads);
+
   // ── Filter state — initialised from server-loaded draft ─────────────────
   const [city, setCity] = useState(initialDraft.city);
   const [state, setState] = useState(initialDraft.state);
@@ -1468,6 +1477,44 @@ export default function PropertySearchClient({
                       isSelected={selectedId === listing.id}
                       onSelect={() => setSelectedId(prev => prev === listing.id ? null : listing.id)}
                       savedLeadIds={savedLeadIds}
+                      onSaved={(leadId) => {
+                        // Add to savedLeads immediately so the ★ appears without a reload.
+                        setSavedLeads(prev => {
+                          const extId = listing.id ?? "";
+                          if (prev.some(l => (l.externalId ?? l.id) === extId)) return prev;
+                          const stub: PropertyLeadView = {
+                            id: leadId,
+                            externalId: extId,
+                            address: listing.formattedAddress || listing.addressLine1 || "",
+                            source: "rentcast",
+                            sourceUrl: null,
+                            acquisitionStage: "researching",
+                            qualificationStatus: "pending",
+                            qualificationReason: null,
+                            followUpDate: null,
+                            notes: null,
+                            ownerId: null,
+                            projectId,
+                            city: listing.city ?? null,
+                            state: listing.state ?? null,
+                            zip: listing.zipCode ?? null,
+                            propertyType: listing.propertyType ?? null,
+                            bedrooms: listing.bedrooms ?? null,
+                            bathrooms: listing.bathrooms != null ? String(listing.bathrooms) : null,
+                            monthlyRent: listing.price != null ? String(listing.price) : null,
+                            listingStatus: listing.status || "Active",
+                            listingDate: listing.listingDate ?? null,
+                            lastSeenDate: listing.lastSeenDate ?? null,
+                            daysOnMarket: listing.daysOnMarket ?? null,
+                            listingContact: listing.listedBy ?? null,
+                            listingPhone: listing.listedByPhone ?? null,
+                            listingEmail: listing.listedByEmail ?? null,
+                            opportunityScore: null,
+                            opportunitySignals: null,
+                          };
+                          return [...prev, stub];
+                        });
+                      }}
                     />
                   ))}
                 </ul>
