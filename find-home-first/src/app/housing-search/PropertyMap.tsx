@@ -391,12 +391,18 @@ export function PropertyMap({
       1,
     ]);
 
-    // Center on selected listing without triggering a new search
+    // Center and zoom on selected listing so the marker is visible.
+    // clusterMaxZoom is 14 — zoom to 15 to guarantee the cluster breaks apart
+    // and the individual amber marker is actually rendered and selectable.
     if (selectedId) {
       const listing = listings.find(l => l.id === selectedId);
       if (listing?.latitude && listing?.longitude) {
+        const currentZoom = map.getZoom();
         map.easeTo({
           center: [listing.longitude, listing.latitude],
+          // Only zoom in if we're currently clustered (below 15).
+          // Never zoom out — if the user is already zoomed in past 15, keep their zoom.
+          zoom: currentZoom < 15 ? 15 : currentZoom,
           animate: !prefersReducedMotion(),
         });
       }
