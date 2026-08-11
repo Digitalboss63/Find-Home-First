@@ -31,8 +31,10 @@ import { LeadWorkspace } from "./LeadWorkspace";
 import {
   SUPPORTED_PROPERTY_TYPES,
   classifyListing,
+  filterRankedListingsForTab,
   rankListings,
   type PropertyFitCriteria,
+  type PropertyResultsTab,
   type PropertyTypePreferences,
   type ListingClassification,
 } from "@/lib/property-relevance";
@@ -1088,9 +1090,7 @@ export default function PropertySearchClient({
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [prefsMsg, setPrefsMsg] = useState<string | null>(null);
   const [showTypeConfig, setShowTypeConfig] = useState(false);
-  const [activeTab, setActiveTab] = useState<
-    "recommended" | "all" | "strong_fit" | "review_needed" | "does_not_meet" | "saved"
-  >("recommended");
+  const [activeTab, setActiveTab] = useState<PropertyResultsTab>("recommended");
 
   // ── Filter state — initialised from server-loaded draft ─────────────────
   const [city, setCity] = useState(initialDraft.city);
@@ -1305,7 +1305,7 @@ export default function PropertySearchClient({
     const savedInResults = classifiedResults.filter(c => c.isSaved).length;
     return {
       all: results.length,
-      recommended: classifiedResults.filter(c => c.fitStatus !== "does_not_meet" || c.isSaved).length,
+      recommended: classifiedResults.filter(c => c.fitStatus !== "does_not_meet").length,
       strong_fit: classifiedResults.filter(c => c.fitStatus === "strong_fit").length,
       review_needed: classifiedResults.filter(c => c.fitStatus === "review_needed").length,
       does_not_meet: classifiedResults.filter(c => c.fitStatus === "does_not_meet").length,
@@ -1321,14 +1321,7 @@ export default function PropertySearchClient({
 
   // Listings visible in current tab (ranked order)
   const visibleListings = useMemo(() => {
-    if (activeTab === "all") return ranked;
-    if (activeTab === "recommended") {
-      return ranked.filter(c => c.fitStatus !== "does_not_meet" || c.isSaved);
-    }
-    if (activeTab === "saved") {
-      return ranked.filter(c => c.isSaved);
-    }
-    return ranked.filter(c => c.fitStatus === activeTab);
+    return filterRankedListingsForTab(ranked, activeTab);
   }, [ranked, activeTab]);
 
   // The raw RentCast listings for visible classified results
@@ -1913,41 +1906,63 @@ export default function PropertySearchClient({
 
               {/* Tab bar */}
               {results.length > 0 && !isSearching && !isAreaSearching && (
-                <div
-                  role="tablist"
-                  aria-label="Filter results by fit"
-                  className="flex flex-wrap gap-1 mb-4"
-                >
-                  {(["recommended", "all", "strong_fit", "review_needed", "does_not_meet", "saved"] as const).map((tab) => {
-                    const labels = {
-                      recommended: "Recommended",
-                      all: "All",
-                      strong_fit: "Strong Fit",
-                      review_needed: "Review Needed",
-                      does_not_meet: "Does Not Meet",
-                      saved: "Saved",
-                    };
-                    const count = counts[tab];
-                    const isActive = activeTab === tab;
-                    return (
+                <>
+                  <div
+                    role="tablist"
+                    aria-label="Filter results by fit"
+                    className="flex flex-wrap gap-1 mb-3"
+                  >
+                    {(["recommended", "all", "strong_fit", "review_needed", "does_not_meet", "saved"] as const).map((tab) => {
+                      const labels = {
+                        recommended: "Recommended",
+                        all: "All",
+                        strong_fit: "Strong Fit",
+                        review_needed: "Review Needed",
+                        does_not_meet: "Does Not Meet",
+                        saved: "Saved",
+                      };
+                      const count = counts[tab];
+                      const isActive = activeTab === tab;
+                      return (
+                        <button
+                          key={tab}
+                          type="button"
+                          role="tab"
+                          aria-selected={isActive}
+                          onClick={() => setActiveTab(tab)}
+                          className="text-xs font-semibold px-3 py-1.5 rounded-full"
+                          style={{
+                            backgroundColor: isActive ? "var(--color-primary)" : "var(--color-surface-soft)",
+                            color: isActive ? "#fff" : "var(--color-text)",
+                            border: "1px solid var(--color-border)",
+                          }}
+                        >
+                          {labels[tab]} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {activeTab === "recommended" && counts.does_not_meet > 0 && (
+                    <div
+                      role="status"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 mb-4 text-xs"
+                      style={{ backgroundColor: "#F8FAFC", border: "1px solid var(--color-border)", color: "var(--color-text)" }}
+                    >
+                      <span>
+                        Showing the best available matches. {counts.does_not_meet} propert{counts.does_not_meet === 1 ? "y" : "ies"} that {counts.does_not_meet === 1 ? "does" : "do"} not meet project requirements {counts.does_not_meet === 1 ? "is" : "are"} hidden.
+                      </span>
                       <button
-                        key={tab}
                         type="button"
-                        role="tab"
-                        aria-selected={isActive}
-                        onClick={() => setActiveTab(tab)}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-full"
-                        style={{
-                          backgroundColor: isActive ? "var(--color-primary)" : "var(--color-surface-soft)",
-                          color: isActive ? "#fff" : "var(--color-text)",
-                          border: "1px solid var(--color-border)",
-                        }}
+                        onClick={() => setActiveTab("does_not_meet")}
+                        className="font-semibold underline"
+                        style={{ color: "var(--color-secondary)" }}
                       >
-                        {labels[tab]} ({count})
+                        View hidden results
                       </button>
-                    );
-                  })}
-                </div>
+                    </div>
+                  )}
+                </>
               )}
 
               {showingCachedResults && !isSearching && !isAreaSearching && (

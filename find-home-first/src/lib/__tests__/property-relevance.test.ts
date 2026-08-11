@@ -10,6 +10,7 @@ import {
   normalizeAddress,
   extractUnitId,
   classifyListing,
+  filterRankedListingsForTab,
   rankListings,
   calculateAdjustedMargin,
   validatePropertyTypePreferences,
@@ -755,9 +756,42 @@ describe("zero RentCast calls — all functions are synchronous", () => {
     expect(result).not.toBeInstanceOf(Promise);
   });
 
+  it("filterRankedListingsForTab returns non-Promise value", () => {
+    const result = filterRankedListingsForTab([], "recommended");
+    expect(result).not.toBeInstanceOf(Promise);
+  });
+
   it("validatePropertyTypePreferences returns non-Promise value", () => {
     const result = validatePropertyTypePreferences({});
     expect(result).not.toBeInstanceOf(Promise);
+  });
+});
+
+describe("weekend-safe Recommended filtering", () => {
+  const listings: ListingClassification[] = [
+    { listingId: "strong", fitStatus: "strong_fit", reasons: [], adjustedMargin: 500, isSaved: false, isDuplicate: false, isSuspectedDuplicate: false },
+    { listingId: "review", fitStatus: "review_needed", reasons: [], adjustedMargin: 300, isSaved: false, isDuplicate: false, isSuspectedDuplicate: false },
+    { listingId: "failed", fitStatus: "does_not_meet", reasons: [], adjustedMargin: -100, isSaved: false, isDuplicate: false, isSuspectedDuplicate: false },
+    { listingId: "saved-failed", fitStatus: "does_not_meet", reasons: [], adjustedMargin: -200, isSaved: true, isDuplicate: true, isSuspectedDuplicate: false },
+  ];
+
+  it("Recommended excludes all Does Not Meet properties, including saved ones", () => {
+    expect(filterRankedListingsForTab(listings, "recommended").map(item => item.listingId))
+      .toEqual(["strong", "review"]);
+  });
+
+  it("Saved retains a saved property that does not meet requirements", () => {
+    expect(filterRankedListingsForTab(listings, "saved").map(item => item.listingId))
+      .toEqual(["saved-failed"]);
+  });
+
+  it("Does Not Meet retains failed properties for deliberate review", () => {
+    expect(filterRankedListingsForTab(listings, "does_not_meet").map(item => item.listingId))
+      .toEqual(["failed", "saved-failed"]);
+  });
+
+  it("All retains every result", () => {
+    expect(filterRankedListingsForTab(listings, "all")).toEqual(listings);
   });
 });
 
