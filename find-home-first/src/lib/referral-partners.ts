@@ -2,6 +2,30 @@ import type { MarketReportSnapshot, ProgramOpportunity } from "@/lib/export/type
 
 export type PartnerEligibility = "qualified" | "review_needed" | "excluded";
 export type ReferralCapacity = "confirmed_external" | "needs_confirmation" | "no_external_referrals";
+
+/**
+ * The referral list is useful as soon as market research is complete. Operators
+ * should be able to identify and verify referral sources while they search for
+ * and secure a property; outreach activation remains separately gated until
+ * the property-preparation stage.
+ */
+export const REFERRAL_FINDER_AVAILABLE_STATUSES = new Set([
+  "city_approved",
+  "finding_property",
+  "contacting_owner",
+  "application_in_progress",
+  "property_approved",
+  "preparing_property",
+  "seeking_referrals",
+  "reviewing_resident",
+  "placement_approved",
+  "move_in_scheduled",
+  "moved_in",
+]);
+
+export function canUseReferralFinder(currentStatus: string): boolean {
+  return REFERRAL_FINDER_AVAILABLE_STATUSES.has(currentStatus);
+}
 export type VerificationStatus = "official_source" | "needs_verification" | "confirmed";
 
 export interface ReferralPartnerSeed {

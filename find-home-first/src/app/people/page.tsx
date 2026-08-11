@@ -8,14 +8,21 @@
  * otherwise falls back to src/demo/data.ts.
  */
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   DEMO_PROSPECTIVE_RESIDENTS,
   DEMO_REFERRAL_CONTACTS,
 } from "@/demo/data";
-import { listContacts, listResidents, isDemoAllowed } from "@/lib/repository";
+import {
+  listActiveProjects,
+  listContacts,
+  listResidents,
+  isDemoAllowed,
+} from "@/lib/repository";
 import type { ContactView, ResidentView } from "@/lib/repository";
 import { requireOrganization } from "@/lib/auth";
+import { canUseReferralFinder } from "@/lib/referral-partners";
 import DemoNotice from "@/components/DemoNotice";
 
 export const metadata: Metadata = {
@@ -137,14 +144,15 @@ function ResidentStatusBadge({ status }: { status: string }) {
 export default async function PeoplePage() {
   const { organizationId } = await requireOrganization();
 
-  const [dbContacts, dbResidents] = await Promise.all([
+  const [dbContacts, dbResidents, dbProjects] = await Promise.all([
     listContacts(organizationId),
     listResidents(organizationId),
+    listActiveProjects(organizationId),
   ]);
 
-  const usingDemo = isDemoAllowed() && (dbContacts === null || dbResidents === null);
+  const usingDemo = isDemoAllowed() && (dbContacts === null || dbResidents === null || dbProjects === null);
 
-  if (!usingDemo && (dbContacts === null || dbResidents === null)) {
+  if (!usingDemo && (dbContacts === null || dbResidents === null || dbProjects === null)) {
     redirect("/unavailable");
   }
 
@@ -155,6 +163,10 @@ export default async function PeoplePage() {
   const residentRows: ResidentRow[] = usingDemo
     ? demoResidentRows()
     : dbResidentRows(dbResidents!);
+
+  const finderProjects = usingDemo
+    ? []
+    : dbProjects!.filter((project) => canUseReferralFinder(project.currentStatus));
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 lg:px-10">
@@ -167,6 +179,51 @@ export default async function PeoplePage() {
           People &amp; Contacts
         </h1>
       </div>
+
+      <section
+        aria-labelledby="finder-heading"
+        className="mb-10 rounded-xl px-5 py-5"
+        style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}
+      >
+        <h2 id="finder-heading" className="font-bold text-base" style={{ color: "#166534" }}>
+          Find Caseworkers &amp; Referral Partners
+        </h2>
+        <p className="text-sm mt-1 mb-4 leading-relaxed" style={{ color: "#14532D", opacity: 0.82 }}>
+          Choose a project to build and verify a city-specific list of caseworker and intake teams that can refer qualified residents.
+        </p>
+
+        {finderProjects.length === 0 ? (
+          <p className="text-sm" style={{ color: "#14532D" }}>
+            Complete a project&apos;s City Report and continue to Find Housing to unlock its referral finder.
+          </p>
+        ) : (
+          <ul className="grid gap-3">
+            {finderProjects.map((project) => (
+              <li
+                key={project.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg px-4 py-3"
+                style={{ backgroundColor: "#fff", border: "1px solid #BBF7D0" }}
+              >
+                <div>
+                  <p className="font-semibold text-sm" style={{ color: "var(--color-primary)" }}>
+                    {project.name}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--color-text)", opacity: 0.65 }}>
+                    {project.community}
+                  </p>
+                </div>
+                <Link
+                  href={`/projects/${project.id}/referrals`}
+                  className="inline-flex rounded-lg px-4 py-2 text-sm font-bold no-underline"
+                  style={{ backgroundColor: "#166534", color: "#fff" }}
+                >
+                  Open Referral Finder →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {/* ── Referral Contacts ─────────────────────────────────────── */}
       <section aria-labelledby="referral-heading" className="mb-12">
