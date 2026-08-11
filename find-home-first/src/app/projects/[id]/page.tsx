@@ -13,6 +13,15 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
+const REFERRAL_READY_STATUSES = new Set([
+  "preparing_property",
+  "seeking_referrals",
+  "reviewing_resident",
+  "placement_approved",
+  "move_in_scheduled",
+  "moved_in",
+]);
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const demo = DEMO_PROJECTS.find((p) => p.id === id);
@@ -306,6 +315,47 @@ export default async function ProjectPage({ params }: Props) {
           </Link>
         </div>
       </div>
+
+      {REFERRAL_READY_STATUSES.has(project.currentStatus) && (
+        <div
+          style={{
+            backgroundColor: "#F0FDF4",
+            border: "1px solid #BBF7D0",
+            borderRadius: "0.75rem",
+            padding: "1.25rem",
+            marginBottom: "1.25rem",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "1rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <p style={{ fontWeight: 700, color: "#166534", margin: "0 0 0.25rem", fontSize: "0.9rem" }}>
+              Caseworker &amp; Referral Partner Finder
+            </p>
+            <p style={{ fontSize: "0.8rem", color: "#14532D", opacity: 0.8, margin: 0 }}>
+              Build a source-backed list of teams that can refer qualified residents into this property.
+            </p>
+          </div>
+          <Link
+            href={`/projects/${project.id}/referrals`}
+            style={{
+              display: "inline-flex",
+              backgroundColor: "#166534",
+              color: "#fff",
+              textDecoration: "none",
+              padding: "0.625rem 1rem",
+              borderRadius: "0.5rem",
+              fontSize: "0.875rem",
+              fontWeight: 700,
+            }}
+          >
+            Find Referral Sources →
+          </Link>
+        </div>
+      )}
 
       {/* Placement journey */}
       <section
