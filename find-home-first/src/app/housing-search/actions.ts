@@ -14,6 +14,7 @@ import { requireOrganization } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
   upsertPropertySearchDraft,
+  getPropertySearchDraft,
   deletePropertySearchDraft,
   savePropertyLead,
   projectBelongsToOrg,
@@ -25,6 +26,10 @@ import {
   upsertMarketResearch,
 } from "@/lib/repository";
 import { validatePropertyTypePreferences } from "@/lib/property-relevance";
+import {
+  makeAreaSearchFingerprint,
+  makePropertySearchFingerprint,
+} from "@/lib/property-search-state";
 import { propertyLeads } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getDb } from "@/db/client";
@@ -105,23 +110,6 @@ async function requireEligibleProject(
   return { organizationId, userId: user.dbUserId, projectId };
 }
 
-// --- Query fingerprint --------------------------------------------------------
-// A deterministic string of the search parameters so we can detect staleness.
-
-function makeFingerprint(draft: PropertySearchDraftView): string {
-  return JSON.stringify({
-    city: draft.city,
-    state: draft.state,
-    zipCode: draft.zipCode,
-    propertyType: draft.propertyType,
-    minBedrooms: draft.minBedrooms,
-    minBathrooms: draft.minBathrooms,
-    maxRent: draft.maxRent,
-    maxDaysListed: draft.maxDaysListed,
-    listingStatus: draft.listingStatus,
-  });
-}
-
 // --- Listing status normalization ---------------------------------------------
 // RentCast accepts "Active" or "Inactive" (title case).
 // Omitting status defaults to Active on RentCast's end — we always send it
@@ -187,6 +175,8 @@ export interface SearchResult {
   listings: RentCastListing[];
   error?: string;
   unconfigured?: boolean;
+  queryFingerprint?: string;
+  searchedAt?: string;
 }
 
 /**
@@ -259,26 +249,33 @@ export async function searchPropertiesAction(
 
   const result = await searchRentalListings(params);
 
-  const fingerprint = makeFingerprint(draft);
-  const snapshot = result.listings.length > 0
-    ? JSON.stringify(result.listings)
-    : null;
+  // A failed paid request must never overwrite the last successful snapshot.
+  if (result.error) {
+    return { listings: [], error: "The property search could not be completed. Please try again." };
+  }
+
+  const fingerprint = makePropertySearchFingerprint(draft);
+  // [] is a valid successful result and is intentionally persisted so an
+  // unchanged zero-result query can be reused without another paid request.
+  const snapshot = JSON.stringify(result.listings);
+  const searchedAt = new Date();
 
   await upsertPropertySearchDraft(organizationId, userId, {
     ...draft,
     projectId,
     submitted: true,
-    lastSearchAt: new Date(),
+    lastSearchAt: searchedAt,
     resultsSnapshot: snapshot,
     resultsCount: result.listings.length,
     queryFingerprint: fingerprint,
+    mapMode: "list",
   });
 
-  if (result.error) {
-    return { listings: [], error: "The property search could not be completed. Please try again." };
-  }
-
-  return { listings: result.listings };
+  return {
+    listings: result.listings,
+    queryFingerprint: fingerprint,
+    searchedAt: searchedAt.toISOString(),
+  };
 }
 
 // --- Search This Area ---------------------------------------------------------
@@ -287,6 +284,8 @@ export interface SearchThisAreaResult {
   listings: RentCastListing[];
   error?: string;
   unconfigured?: boolean;
+  queryFingerprint?: string;
+  searchedAt?: string;
 }
 
 /**
@@ -315,7 +314,7 @@ export async function searchThisAreaAction(input: {
     const msg = err instanceof Error ? err.message : "Project not eligible.";
     return { listings: [], error: msg };
   }
-  const { organizationId } = ctx;
+  const { organizationId, userId, projectId } = ctx;
 
   const rl = checkRateLimit(`search:${organizationId}`, 5);
   if (!rl.allowed) {
@@ -351,7 +350,41 @@ export async function searchThisAreaAction(input: {
   if (result.error) {
     return { listings: [], error: "The area search could not be completed. Please try again." };
   }
-  return { listings: result.listings };
+
+  const existing = await getPropertySearchDraft(organizationId, userId, projectId);
+  const fingerprint = makeAreaSearchFingerprint({
+    ...input,
+    radiusMiles: radius,
+  });
+  const searchedAt = new Date();
+
+  await upsertPropertySearchDraft(organizationId, userId, {
+    projectId,
+    city: existing?.city ?? "",
+    state: existing?.state ?? "",
+    zipCode: existing?.zipCode ?? "",
+    propertyType: input.propertyType ?? "",
+    minBedrooms: input.minBedrooms ?? "",
+    minBathrooms: input.minBathrooms ?? "",
+    maxRent: input.maxRent ?? "",
+    maxDaysListed: input.maxDaysListed ?? "",
+    listingStatus: input.listingStatus ?? "active",
+    submitted: true,
+    lastSearchAt: searchedAt,
+    resultsSnapshot: JSON.stringify(result.listings),
+    resultsCount: result.listings.length,
+    queryFingerprint: fingerprint,
+    mapLatitude: String(input.latitude),
+    mapLongitude: String(input.longitude),
+    mapRadiusMi: radius,
+    mapMode: "map",
+  });
+
+  return {
+    listings: result.listings,
+    queryFingerprint: fingerprint,
+    searchedAt: searchedAt.toISOString(),
+  };
 }
 
 // --- Owner enrichment ---------------------------------------------------------

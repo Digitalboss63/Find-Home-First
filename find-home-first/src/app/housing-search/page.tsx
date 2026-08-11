@@ -69,7 +69,27 @@ function buildFitCriteria(
 ): PropertyFitCriteria {
   const criteria: PropertyFitCriteria = {};
 
-  // Geography: from City Report geography or project.community (NOT from draft city/state)
+  // Geography: a successful map-area search takes precedence over city/state.
+  // Stale map coordinates from an earlier search are ignored unless mapMode is
+  // explicitly "map".
+  if (
+    draft.mapMode === "map" &&
+    draft.mapLatitude != null &&
+    draft.mapLongitude != null &&
+    draft.mapRadiusMi != null
+  ) {
+    const latitude = Number(draft.mapLatitude);
+    const longitude = Number(draft.mapLongitude);
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      criteria.mapLatitude = latitude;
+      criteria.mapLongitude = longitude;
+      criteria.mapRadiusMi = draft.mapRadiusMi;
+    }
+  }
+
+  // Always retain the project's documented city/state so switching from a map
+  // search back to a criteria search can restore the proper geography locally.
+  // These values never come from the user's RentCast query filters.
   if (report?.geography?.city) {
     criteria.city = report.geography.city;
   } else if (project?.community) {
@@ -80,11 +100,6 @@ function buildFitCriteria(
 
   if (report?.geography?.stateAbbr && !criteria.state) {
     criteria.state = report.geography.stateAbbr;
-  }
-
-  // Map radius: from draft (geography scope)
-  if (draft.mapRadiusMi != null) {
-    criteria.mapRadiusMi = draft.mapRadiusMi;
   }
 
   // Property type preferences: from marketResearch.propertyTypePreferences

@@ -13,6 +13,7 @@ import {
   rankListings,
   calculateAdjustedMargin,
   validatePropertyTypePreferences,
+  distanceMiles,
   SUPPORTED_PROPERTY_TYPES,
   type PropertyFitCriteria,
   type ListingClassification,
@@ -154,6 +155,10 @@ function makeListing(overrides: Partial<{
   bedrooms: number | null;
   bathrooms: number | null;
   price: number | null;
+  city: string | null;
+  state: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }> = {}) {
   return {
     id: overrides.id ?? "listing-1",
@@ -162,6 +167,10 @@ function makeListing(overrides: Partial<{
     bedrooms: overrides.bedrooms !== undefined ? overrides.bedrooms : 3,
     bathrooms: overrides.bathrooms !== undefined ? overrides.bathrooms : 2,
     price: overrides.price !== undefined ? overrides.price : 1500,
+    city: overrides.city !== undefined ? overrides.city : "Atlanta",
+    state: overrides.state !== undefined ? overrides.state : "GA",
+    latitude: overrides.latitude !== undefined ? overrides.latitude : 33.749,
+    longitude: overrides.longitude !== undefined ? overrides.longitude : -84.388,
   };
 }
 
@@ -230,7 +239,16 @@ describe("classifyListing — property type", () => {
     const result = classifyListing(makeListing(), criteria, new Set(), seenIds, seenAddresses);
     // Should not be does_not_meet based on type alone
     expect(result.fitStatus).not.toBe("does_not_meet");
-    expect(result.reasons.some(r => r.status === "info")).toBe(true);
+    expect(result.fitStatus).toBe("review_needed");
+    expect(result.reasons.some(r => r.status === "missing")).toBe(true);
+  });
+
+  it("no prefs configured stays review_needed even when another criterion passes", () => {
+    const criteria: PropertyFitCriteria = { minimumBedrooms: 2 };
+    const { seenIds, seenAddresses } = freshSets();
+    const result = classifyListing(makeListing({ bedrooms: 4 }), criteria, new Set(), seenIds, seenAddresses);
+    expect(result.fitStatus).toBe("review_needed");
+    expect(result.reasons.some(r => r.text.includes("Property types have not been configured"))).toBe(true);
   });
 
   it("multiple preferred types both match correctly", () => {
@@ -429,6 +447,90 @@ describe("classifyListing — no criteria configured", () => {
   });
 });
 
+// ─── classifyListing — geography ─────────────────────────────────────────────
+
+describe("classifyListing — geography", () => {
+  it("matching city and state pass", () => {
+    const { seenIds, seenAddresses } = freshSets();
+    const result = classifyListing(
+      makeListing({ city: "atlanta", state: "ga" }),
+      { city: "Atlanta", state: "GA", propertyTypePreferences: { "Single Family": "preferred" } },
+      new Set(),
+      seenIds,
+      seenAddresses
+    );
+    expect(result.fitStatus).toBe("strong_fit");
+    expect(result.reasons.some(r => r.text.includes("Within target city"))).toBe(true);
+  });
+
+  it("known city mismatch does_not_meet", () => {
+    const { seenIds, seenAddresses } = freshSets();
+    const result = classifyListing(
+      makeListing({ city: "Detroit", state: "MI" }),
+      { city: "Atlanta", state: "GA", propertyTypePreferences: { "Single Family": "preferred" } },
+      new Set(),
+      seenIds,
+      seenAddresses
+    );
+    expect(result.fitStatus).toBe("does_not_meet");
+    expect(result.reasons.some(r => r.status === "fail" && r.text.includes("target city"))).toBe(true);
+  });
+
+  it("missing listing geography requires review", () => {
+    const { seenIds, seenAddresses } = freshSets();
+    const result = classifyListing(
+      makeListing({ city: null, state: null }),
+      { city: "Atlanta", state: "GA", propertyTypePreferences: { "Single Family": "preferred" } },
+      new Set(),
+      seenIds,
+      seenAddresses
+    );
+    expect(result.fitStatus).toBe("review_needed");
+  });
+
+  it("map radius takes precedence over city/state", () => {
+    const { seenIds, seenAddresses } = freshSets();
+    const result = classifyListing(
+      makeListing({ city: "East Point", state: "GA", latitude: 33.7489, longitude: -84.3881 }),
+      {
+        city: "Atlanta",
+        state: "GA",
+        mapLatitude: 33.749,
+        mapLongitude: -84.388,
+        mapRadiusMi: 5,
+        propertyTypePreferences: { "Single Family": "preferred" },
+      },
+      new Set(),
+      seenIds,
+      seenAddresses
+    );
+    expect(result.fitStatus).toBe("strong_fit");
+    expect(result.reasons.some(r => r.text.includes("map area"))).toBe(true);
+    expect(result.reasons.some(r => r.text.includes("target city"))).toBe(false);
+  });
+
+  it("listing outside configured map radius does_not_meet", () => {
+    const { seenIds, seenAddresses } = freshSets();
+    const result = classifyListing(
+      makeListing({ latitude: 34.0522, longitude: -84.388 }),
+      {
+        mapLatitude: 33.749,
+        mapLongitude: -84.388,
+        mapRadiusMi: 5,
+        propertyTypePreferences: { "Single Family": "preferred" },
+      },
+      new Set(),
+      seenIds,
+      seenAddresses
+    );
+    expect(result.fitStatus).toBe("does_not_meet");
+  });
+
+  it("distanceMiles returns a small distance for nearby coordinates", () => {
+    expect(distanceMiles(33.749, -84.388, 33.75, -84.389)).toBeLessThan(1);
+  });
+});
+
 // ─── classifyListing — duplicate detection ───────────────────────────────────
 
 describe("classifyListing — duplicate detection", () => {
@@ -439,7 +541,7 @@ describe("classifyListing — duplicate detection", () => {
     expect(result.isDuplicate).toBe(true);
   });
 
-  it("separate apartment units not deduplicated: same base address, different units", () => {
+  it("separate apartment units are not suspected duplicates", () => {
     const criteria: PropertyFitCriteria = {};
     const seenIds = new Set<string>();
     const seenAddresses = new Map<string, string>();
@@ -458,8 +560,41 @@ describe("classifyListing — duplicate detection", () => {
 
     expect(r1.isDuplicate).toBe(false);
     expect(r2.isDuplicate).toBe(false);
-    // r2 should be suspected duplicate since same base address
-    expect(r2.isSuspectedDuplicate).toBe(true);
+    expect(r2.isSuspectedDuplicate).toBe(false);
+  });
+
+  it("same address and unit is flagged as a suspected duplicate", () => {
+    const criteria: PropertyFitCriteria = {};
+    const seenIds = new Set<string>();
+    const seenAddresses = new Map<string, string>();
+    classifyListing(
+      makeListing({ id: "unit-1", formattedAddress: "123 Main St Apt 2, Atlanta, GA" }),
+      criteria,
+      new Set(),
+      seenIds,
+      seenAddresses
+    );
+    const duplicate = classifyListing(
+      makeListing({ id: "unit-2", formattedAddress: "123 Main Street Apt 2, Atlanta, GA" }),
+      criteria,
+      new Set(),
+      seenIds,
+      seenAddresses
+    );
+    expect(duplicate.isSuspectedDuplicate).toBe(true);
+  });
+
+  it("saved external ID is marked saved and duplicate", () => {
+    const { seenIds, seenAddresses } = freshSets();
+    const result = classifyListing(
+      makeListing({ id: "saved-1" }),
+      {},
+      new Set(["saved-1"]),
+      seenIds,
+      seenAddresses
+    );
+    expect(result.isSaved).toBe(true);
+    expect(result.isDuplicate).toBe(true);
   });
 });
 
@@ -468,9 +603,9 @@ describe("classifyListing — duplicate detection", () => {
 describe("rankListings", () => {
   it("ranks strong_fit before review_needed before does_not_meet", () => {
     const listings: ListingClassification[] = [
-      { listingId: "a", fitStatus: "does_not_meet", reasons: [], adjustedMargin: null, isDuplicate: false, isSuspectedDuplicate: false },
-      { listingId: "b", fitStatus: "strong_fit", reasons: [], adjustedMargin: null, isDuplicate: false, isSuspectedDuplicate: false },
-      { listingId: "c", fitStatus: "review_needed", reasons: [], adjustedMargin: null, isDuplicate: false, isSuspectedDuplicate: false },
+      { listingId: "a", fitStatus: "does_not_meet", reasons: [], adjustedMargin: null, isSaved: false, isDuplicate: false, isSuspectedDuplicate: false },
+      { listingId: "b", fitStatus: "strong_fit", reasons: [], adjustedMargin: null, isSaved: false, isDuplicate: false, isSuspectedDuplicate: false },
+      { listingId: "c", fitStatus: "review_needed", reasons: [], adjustedMargin: null, isSaved: false, isDuplicate: false, isSuspectedDuplicate: false },
     ];
     const ranked = rankListings(listings);
     expect(ranked[0].fitStatus).toBe("strong_fit");
@@ -480,12 +615,28 @@ describe("rankListings", () => {
 
   it("is deterministic (stable sort within groups)", () => {
     const listings: ListingClassification[] = [
-      { listingId: "x", fitStatus: "review_needed", reasons: [], adjustedMargin: null, isDuplicate: false, isSuspectedDuplicate: false },
-      { listingId: "y", fitStatus: "review_needed", reasons: [], adjustedMargin: null, isDuplicate: false, isSuspectedDuplicate: false },
+      { listingId: "x", fitStatus: "review_needed", reasons: [], adjustedMargin: null, isSaved: false, isDuplicate: false, isSuspectedDuplicate: false },
+      { listingId: "y", fitStatus: "review_needed", reasons: [], adjustedMargin: null, isSaved: false, isDuplicate: false, isSuspectedDuplicate: false },
     ];
     const r1 = rankListings(listings);
     const r2 = rankListings(listings);
     expect(r1.map(l => l.listingId)).toEqual(r2.map(l => l.listingId));
+  });
+
+  it("ranks a saved listing before an unsaved strong fit", () => {
+    const listings: ListingClassification[] = [
+      { listingId: "strong", fitStatus: "strong_fit", reasons: [], adjustedMargin: 900, isSaved: false, isDuplicate: false, isSuspectedDuplicate: false },
+      { listingId: "saved", fitStatus: "review_needed", reasons: [], adjustedMargin: 100, isSaved: true, isDuplicate: true, isSuspectedDuplicate: false },
+    ];
+    expect(rankListings(listings)[0].listingId).toBe("saved");
+  });
+
+  it("ranks higher adjusted margin first within the same tier", () => {
+    const listings: ListingClassification[] = [
+      { listingId: "low", fitStatus: "strong_fit", reasons: [], adjustedMargin: 100, isSaved: false, isDuplicate: false, isSuspectedDuplicate: false },
+      { listingId: "high", fitStatus: "strong_fit", reasons: [], adjustedMargin: 500, isSaved: false, isDuplicate: false, isSuspectedDuplicate: false },
+    ];
+    expect(rankListings(listings).map(item => item.listingId)).toEqual(["high", "low"]);
   });
 });
 
