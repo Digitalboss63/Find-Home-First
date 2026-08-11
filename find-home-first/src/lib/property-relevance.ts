@@ -508,6 +508,33 @@ export function rankListings(
   });
 }
 
+export type PropertyResultsTab =
+  | "recommended"
+  | "all"
+  | "strong_fit"
+  | "review_needed"
+  | "does_not_meet"
+  | "saved";
+
+/**
+ * Keep the default Recommended view focused on viable properties. Saved
+ * properties that no longer meet the project requirements remain available in
+ * Saved, Does Not Meet, and All instead of being mixed into best matches.
+ */
+export function filterRankedListingsForTab(
+  ranked: ListingClassification[],
+  tab: PropertyResultsTab
+): ListingClassification[] {
+  if (tab === "all") return ranked;
+  if (tab === "recommended") {
+    return ranked.filter(item => item.fitStatus !== "does_not_meet");
+  }
+  if (tab === "saved") {
+    return ranked.filter(item => item.isSaved);
+  }
+  return ranked.filter(item => item.fitStatus === tab);
+}
+
 // ─── Validate property type preferences ──────────────────────────────────────
 
 /**
