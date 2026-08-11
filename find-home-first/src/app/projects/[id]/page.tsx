@@ -8,19 +8,11 @@ import { DEMO_PROJECTS, DEMO_TASKS } from "@/demo/data";
 import { getProjectById, listTasksForProject, isDemoAllowed } from "@/lib/repository";
 import { requireOrganization } from "@/lib/auth";
 import { STAGES } from "@/lib/stages";
+import { canUseReferralFinder } from "@/lib/referral-partners";
 
 interface Props {
   params: Promise<{ id: string }>;
 }
-
-const REFERRAL_READY_STATUSES = new Set([
-  "preparing_property",
-  "seeking_referrals",
-  "reviewing_resident",
-  "placement_approved",
-  "move_in_scheduled",
-  "moved_in",
-]);
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
@@ -316,7 +308,7 @@ export default async function ProjectPage({ params }: Props) {
         </div>
       </div>
 
-      {REFERRAL_READY_STATUSES.has(project.currentStatus) && (
+      {canUseReferralFinder(project.currentStatus) && (
         <div
           style={{
             backgroundColor: "#F0FDF4",
@@ -336,7 +328,7 @@ export default async function ProjectPage({ params }: Props) {
               Caseworker &amp; Referral Partner Finder
             </p>
             <p style={{ fontSize: "0.8rem", color: "#14532D", opacity: 0.8, margin: 0 }}>
-              Build a source-backed list of teams that can refer qualified residents into this property.
+              Build a source-backed list of caseworker and intake teams that can refer qualified residents when the property is ready.
             </p>
           </div>
           <Link

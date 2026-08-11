@@ -1,6 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { MarketReportSnapshot, ProgramOpportunity } from "@/lib/export/types";
-import { buildReferralPartnerSeeds, determinePartnerEligibility } from "@/lib/referral-partners";
+import {
+  buildReferralPartnerSeeds,
+  canUseReferralFinder,
+  determinePartnerEligibility,
+} from "@/lib/referral-partners";
 
 function program(overrides: Partial<ProgramOpportunity> = {}): ProgramOpportunity {
   return {
@@ -109,6 +113,31 @@ describe("determinePartnerEligibility", () => {
   it("keeps unknown capacity in review instead of falsely qualifying it", () => {
     expect(determinePartnerEligibility({ verificationStatus: "official_source", referralCapacityStatus: "needs_confirmation", operatesCompetingHousing: null }).status).toBe("review_needed");
   });
+});
+
+describe("referral finder availability", () => {
+  it.each([
+    "city_approved",
+    "finding_property",
+    "contacting_owner",
+    "application_in_progress",
+    "property_approved",
+    "preparing_property",
+    "seeking_referrals",
+    "reviewing_resident",
+    "placement_approved",
+    "move_in_scheduled",
+    "moved_in",
+  ])("is available during %s", (status) => {
+    expect(canUseReferralFinder(status)).toBe(true);
+  });
+
+  it.each(["researching_city", "closed_not_proceeding", "unknown"])(
+    "is hidden during %s",
+    (status) => {
+      expect(canUseReferralFinder(status)).toBe(false);
+    }
+  );
 });
 
 const mocks = vi.hoisted(() => ({
