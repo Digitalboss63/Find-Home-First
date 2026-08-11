@@ -22,7 +22,9 @@ import {
   upsertPropertyOwner,
   updateLeadOwner,
   updateLeadStage,
+  upsertMarketResearch,
 } from "@/lib/repository";
+import { validatePropertyTypePreferences } from "@/lib/property-relevance";
 import { propertyLeads } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getDb } from "@/db/client";
@@ -617,4 +619,40 @@ export async function updateLeadStageAction(
   const ok = await updateLeadStage(organizationId, leadId, stage);
   if (!ok) return { ok: false, error: "Could not update lead stage." };
   return { ok: true };
+}
+
+// --- Property type preferences ------------------------------------------------
+
+/**
+ * Saves property type preferences for a project's market research record.
+ * Only updates propertyTypePreferences — never touches other fields.
+ */
+export async function savePropertyTypePreferencesAction(
+  projectId: string,
+  rawPreferences: unknown,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { organizationId } = await requireOrganization();
+
+    if (!projectId || typeof projectId !== "string") {
+      return { ok: false, error: "A project must be selected." };
+    }
+
+    const belongs = await projectBelongsToOrg(projectId, organizationId);
+    if (!belongs) return { ok: false, error: "Project not found." };
+
+    const validated = validatePropertyTypePreferences(rawPreferences);
+    if (!validated.valid) {
+      return { ok: false, error: validated.error };
+    }
+
+    const saved = await upsertMarketResearch(projectId, organizationId, {
+      propertyTypePreferences: validated.data,
+    });
+    if (!saved) return { ok: false, error: "Could not save preferences." };
+
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Could not save preferences." };
+  }
 }

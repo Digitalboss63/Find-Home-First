@@ -21,12 +21,18 @@ import {
   getProjectById,
   getMarketResearch,
   isDemoAllowed,
+  type MarketResearchView,
+  type ProjectView,
 } from "@/lib/repository";
 import { getLatestReport } from "@/lib/repository-intelligence";
 import { getDb } from "@/db/client";
 import { isRentCastConfigured } from "@/lib/rentcast";
 import type { PropertySearchDraftView } from "@/lib/repository";
 import type { MarketReportSnapshot } from "@/lib/export/types";
+import {
+  type PropertyFitCriteria,
+  type PropertyTypePreferences,
+} from "@/lib/property-relevance";
 import PropertySearchClient from "./PropertySearchClient";
 import ProjectSelector from "./ProjectSelector";
 
@@ -52,6 +58,84 @@ const SEARCH_ELIGIBLE_STATUSES = new Set([
   "reviewing_resident",
   "placement_approved",
 ]);
+
+// ─── Build fit criteria ───────────────────────────────────────────────────────
+
+function buildFitCriteria(
+  project: ProjectView | null,
+  marketResearch: MarketResearchView | null,
+  report: MarketReportSnapshot | null,
+  draft: PropertySearchDraftView
+): PropertyFitCriteria {
+  const criteria: PropertyFitCriteria = {};
+
+  // Geography: from City Report geography or project.community (NOT from draft city/state)
+  if (report?.geography?.city) {
+    criteria.city = report.geography.city;
+  } else if (project?.community) {
+    const parts = project.community.split(",").map((s) => s.trim());
+    criteria.city = parts[0] || undefined;
+    if (parts.length >= 2) criteria.state = parts[1] || undefined;
+  }
+
+  if (report?.geography?.stateAbbr && !criteria.state) {
+    criteria.state = report.geography.stateAbbr;
+  }
+
+  // Map radius: from draft (geography scope)
+  if (draft.mapRadiusMi != null) {
+    criteria.mapRadiusMi = draft.mapRadiusMi;
+  }
+
+  // Property type preferences: from marketResearch.propertyTypePreferences
+  if (marketResearch?.propertyTypePreferences) {
+    criteria.propertyTypePreferences = marketResearch.propertyTypePreferences as PropertyTypePreferences;
+  }
+
+  // Minimum bedrooms: from marketResearch
+  if (marketResearch?.minimumBedrooms) {
+    const parsed = parseInt(marketResearch.minimumBedrooms, 10);
+    if (!isNaN(parsed)) criteria.minimumBedrooms = parsed;
+  }
+
+  // Maximum monthly lease: maxAcceptableLease first, then Conservative scenario
+  if (marketResearch?.maxAcceptableLease) {
+    const parsed = parseFloat(marketResearch.maxAcceptableLease);
+    if (!isNaN(parsed)) criteria.maximumMonthlyLease = parsed;
+  } else if (report) {
+    const conservative = report.economicsScenarios?.find((s) => s.label === "Conservative");
+    if (conservative?.propertyRentUsd != null) {
+      criteria.maximumMonthlyLease = conservative.propertyRentUsd;
+    }
+  }
+
+  // Required private room capacity
+  if (marketResearch?.expectedPrivateRoomCapacity) {
+    const parsed = parseInt(marketResearch.expectedPrivateRoomCapacity, 10);
+    if (!isNaN(parsed)) criteria.requiredPrivateRoomCapacity = parsed;
+  }
+
+  // Baseline economics: from Conservative scenario (all 4 fields must be non-null)
+  if (report) {
+    const conservative = report.economicsScenarios?.find((s) => s.label === "Conservative");
+    if (
+      conservative &&
+      conservative.netMarginUsd != null &&
+      conservative.propertyRentUsd != null &&
+      conservative.occupancyPct != null &&
+      conservative.usableRooms != null
+    ) {
+      criteria.baselineEconomics = {
+        baselineNetMargin: conservative.netMarginUsd,
+        baselinePropertyRent: conservative.propertyRentUsd,
+        baselineOccupancyPct: conservative.occupancyPct,
+        baselineUsableRooms: conservative.usableRooms,
+      };
+    }
+  }
+
+  return criteria;
+}
 
 interface PageProps {
   searchParams: Promise<{ project?: string }>;
@@ -152,10 +236,14 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
 
   // Non-blocking: check if there's a completed City Report for this project
   let hasCompletedReport = false;
+  let parsedReport: MarketReportSnapshot | null = null;
   if (db) {
     try {
-      const report = await getLatestReport(db, organizationId, projectId);
-      hasCompletedReport = report !== null;
+      const reportRow = await getLatestReport(db, organizationId, projectId);
+      hasCompletedReport = reportRow !== null;
+      if (reportRow?.reportJson) {
+        parsedReport = JSON.parse(reportRow.reportJson) as MarketReportSnapshot;
+      }
     } catch {
       // non-blocking — ignore failures
     }
@@ -182,23 +270,15 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
     let prefillMaxRent = "";
 
     // (2) City Report snapshot geography + economics
-    if (hasCompletedReport && db) {
-      try {
-        const report = await getLatestReport(db, organizationId, projectId);
-        if (report?.reportJson) {
-          const snapshot = JSON.parse(report.reportJson) as MarketReportSnapshot;
-          if (snapshot.geography?.city) prefillCity = snapshot.geography.city;
-          if (snapshot.geography?.stateAbbr) prefillState = snapshot.geography.stateAbbr;
-          // Conservative economics propertyRentUsd (only when explicitly present)
-          const conservative = snapshot.economicsScenarios?.find(
-            (s) => s.label === "Conservative"
-          );
-          if (conservative?.propertyRentUsd != null) {
-            prefillMaxRent = String(conservative.propertyRentUsd);
-          }
-        }
-      } catch {
-        // non-blocking
+    if (hasCompletedReport && parsedReport) {
+      if (parsedReport.geography?.city) prefillCity = parsedReport.geography.city;
+      if (parsedReport.geography?.stateAbbr) prefillState = parsedReport.geography.stateAbbr;
+      // Conservative economics propertyRentUsd (only when explicitly present)
+      const conservative = parsedReport.economicsScenarios?.find(
+        (s) => s.label === "Conservative"
+      );
+      if (conservative?.propertyRentUsd != null) {
+        prefillMaxRent = String(conservative.propertyRentUsd);
       }
     }
 
@@ -237,6 +317,11 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
     };
   }
 
+  // ── Build fit criteria ──────────────────────────────────────────────────
+  const fitCriteria = buildFitCriteria(project, marketResearch, parsedReport, initialDraft);
+  const initialPropertyTypePreferences: PropertyTypePreferences =
+    (marketResearch?.propertyTypePreferences as PropertyTypePreferences) ?? {};
+
   return (
     <PropertySearchClient
       initialDraft={initialDraft}
@@ -246,6 +331,8 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
       isDemoMode={isDemoAllowed()}
       projectId={projectId}
       hasCompletedReport={hasCompletedReport}
+      fitCriteria={fitCriteria}
+      initialPropertyTypePreferences={initialPropertyTypePreferences}
     />
   );
 }

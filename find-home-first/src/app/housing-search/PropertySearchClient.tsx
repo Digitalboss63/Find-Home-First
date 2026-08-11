@@ -20,6 +20,7 @@ import {
   saveLeadAction,
   linkOwnerToLeadAction,
   searchThisAreaAction,
+  savePropertyTypePreferencesAction,
 } from "./actions";
 import { PropertyResultsLayout } from "./PropertyResultsLayout";
 import {
@@ -27,6 +28,14 @@ import {
   TERMINAL_STAGES,
 } from "@/lib/lead-pipeline";
 import { LeadWorkspace } from "./LeadWorkspace";
+import {
+  SUPPORTED_PROPERTY_TYPES,
+  classifyListing,
+  rankListings,
+  type PropertyFitCriteria,
+  type PropertyTypePreferences,
+  type ListingClassification,
+} from "@/lib/property-relevance";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -138,8 +147,11 @@ function useDebounced<T>(fn: (val: T) => void, ms: number) {
 
 // ─── Score badge ──────────────────────────────────────────────────────────────
 
-function ScoreBadge({ result }: { result: OpportunityResult }) {
+function ScoreBadge({ result, isEnriched }: { result: OpportunityResult; isEnriched?: boolean }) {
   const availableSignals = result.signals.filter((s) => s.available && s.earned > 0).length;
+  const label = isEnriched
+    ? `Owner Opportunity: ${result.score}/100`
+    : `Listing signals: ${availableSignals}`;
   return (
     <div
       className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold"
@@ -149,11 +161,26 @@ function ScoreBadge({ result }: { result: OpportunityResult }) {
         border: "1px solid var(--color-border)",
       }}
     >
-      Score: {result.score} / 100
-      {availableSignals > 0 && (
-        <span style={{ opacity: 0.75 }}>— {availableSignals} signal{availableSignals !== 1 ? "s" : ""}</span>
-      )}
+      {label}
     </div>
+  );
+}
+
+// ─── Fit badge ────────────────────────────────────────────────────────────────
+
+function FitBadge({ fitStatus }: { fitStatus: "strong_fit" | "review_needed" | "does_not_meet" }) {
+  const config = {
+    strong_fit: { symbol: "✓", label: "Strong Fit", bg: "#D1FAE5", color: "#065F46", border: "#6EE7B7" },
+    review_needed: { symbol: "?", label: "Review Needed", bg: "#FEF3C7", color: "#92400E", border: "#FDE68A" },
+    does_not_meet: { symbol: "×", label: "Does Not Meet", bg: "#FEE2E2", color: "#991B1B", border: "#FECACA" },
+  }[fitStatus];
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
+      style={{ backgroundColor: config.bg, color: config.color, border: `1px solid ${config.border}` }}
+    >
+      {config.symbol} {config.label}
+    </span>
   );
 }
 
@@ -287,7 +314,7 @@ function OwnerPanel({
             <p className="font-semibold text-xs" style={{ color: "var(--color-secondary)" }}>
               Opportunity Score
             </p>
-            <ScoreBadge result={enrichedScore} />
+            <ScoreBadge result={enrichedScore} isEnriched={true} />
           </div>
           <ul className="space-y-0.5">
             {enrichedScore.signals.filter((s) => s.available && s.earned > 0).map((sig) => (
@@ -315,6 +342,40 @@ function OwnerPanel({
   );
 }
 
+// ─── Fit reasons panel ────────────────────────────────────────────────────────
+
+function FitReasonsPanel({ reasons }: { reasons: import("@/lib/property-relevance").FitReason[] }) {
+  const [open, setOpen] = useState(false);
+  const statusIcon = { pass: "✓", fail: "×", missing: "?", info: "ℹ" } as const;
+  const statusColor = {
+    pass: "#065F46",
+    fail: "#991B1B",
+    missing: "#92400E",
+    info: "#1E3A5F",
+  } as const;
+  return (
+    <div className="mb-3">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        className="text-xs font-medium underline"
+        style={{ color: "var(--color-secondary)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+      >
+        {open ? "▲ Hide rating details" : "▼ Why this rating?"}
+      </button>
+      {open && (
+        <ul className="mt-2 space-y-1 text-xs pl-1">
+          {reasons.map((r, i) => (
+            <li key={i} style={{ color: statusColor[r.status] }}>
+              <span aria-hidden="true">{statusIcon[r.status]}</span> {r.text}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // ─── Listing card ─────────────────────────────────────────────────────────────
 
 function ListingCard({
@@ -324,6 +385,7 @@ function ListingCard({
   onSelect,
   savedLeadIds,
   onSaved,
+  classification,
 }: {
   listing: RentCastListing;
   projectId: string;
@@ -331,6 +393,7 @@ function ListingCard({
   onSelect: () => void;
   savedLeadIds: Set<string>;
   onSaved?: (leadId: string) => void;
+  classification?: ListingClassification;
 }) {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -464,10 +527,16 @@ function ListingCard({
           </div>
         </div>
 
-        {/* Pre-enrichment score badge */}
-        <div className="mb-3">
-          <ScoreBadge result={preScore} />
+        {/* Fit badge + score badge */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {classification && <FitBadge fitStatus={classification.fitStatus} />}
+          <ScoreBadge result={preScore} isEnriched={false} />
         </div>
+
+        {/* Expandable fit reasons */}
+        {classification && classification.reasons.length > 0 && (
+          <FitReasonsPanel reasons={classification.reasons} />
+        )}
 
         {/* Metadata grid */}
         <div
@@ -512,15 +581,32 @@ function ListingCard({
 
         {/* Actions — stopPropagation so button clicks don't deselect the card */}
         <div className="flex flex-wrap items-center gap-2 mb-3" onClick={e => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || isPending}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white disabled:opacity-50"
-            style={{ backgroundColor: "var(--color-action)" }}
-          >
-            {saving ? "Saving…" : "Save Property Lead"}
-          </button>
+          {/* Show "Save Anyway" on does_not_meet, otherwise "Save Property Lead" */}
+          {classification?.fitStatus === "does_not_meet" ? (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || isPending}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
+              style={{
+                border: "1px solid var(--color-border)",
+                backgroundColor: "#fff",
+                color: "var(--color-text)",
+              }}
+            >
+              {saving ? "Saving…" : "Save Anyway"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || isPending}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white disabled:opacity-50"
+              style={{ backgroundColor: "var(--color-action)" }}
+            >
+              {saving ? "Saving…" : "Save Property Lead"}
+            </button>
+          )}
           {saveMsg && (
             <span
               className="text-xs"
@@ -900,6 +986,8 @@ interface Props {
   isDemoMode: boolean;
   projectId: string;
   hasCompletedReport: boolean;
+  fitCriteria: PropertyFitCriteria;
+  initialPropertyTypePreferences: PropertyTypePreferences;
 }
 
 /** Parse the stored results snapshot back to RentCastListing[]. */
@@ -920,9 +1008,19 @@ export default function PropertySearchClient({
   rentCastConfigured,
   projectId,
   hasCompletedReport,
+  fitCriteria,
+  initialPropertyTypePreferences,
 }: Props) {
   // ── Saved leads — tracked as state so the ★ appears immediately on save ──
   const [savedLeads, setSavedLeads] = useState<PropertyLeadView[]>(initialSavedLeads);
+
+  // ── Fit criteria + property type preferences ─────────────────────────────
+  const [fitCriteriaState, setFitCriteriaState] = useState<PropertyFitCriteria>(fitCriteria);
+  const [typePrefs, setTypePrefs] = useState<PropertyTypePreferences>(initialPropertyTypePreferences);
+  const [prefsSaving, setPrefsSaving] = useState(false);
+  const [prefsMsg, setPrefsMsg] = useState<string | null>(null);
+  const [showTypeConfig, setShowTypeConfig] = useState(false);
+  const [activeTab, setActiveTab] = useState<"all" | "strong_fit" | "review_needed" | "does_not_meet" | "saved">("all");
 
   // ── Filter state — initialised from server-loaded draft ─────────────────
   const [city, setCity] = useState(initialDraft.city);
@@ -1062,6 +1160,51 @@ export default function PropertySearchClient({
     [savedLeads]
   );
 
+  // ── Classify and rank results ─────────────────────────────────────────────
+  const classifiedResults = useMemo(() => {
+    const seenIds = new Set<string>();
+    const seenAddresses = new Map<string, string>();
+    return results.map((listing) =>
+      classifyListing(listing, fitCriteriaState, savedLeadIds, seenIds, seenAddresses)
+    );
+  }, [results, fitCriteriaState, savedLeadIds]);
+
+  const ranked = useMemo(
+    () => rankListings(classifiedResults),
+    [classifiedResults]
+  );
+
+  const counts = useMemo(() => {
+    return {
+      all: results.length,
+      strong_fit: classifiedResults.filter(c => c.fitStatus === "strong_fit").length,
+      review_needed: classifiedResults.filter(c => c.fitStatus === "review_needed").length,
+      does_not_meet: classifiedResults.filter(c => c.fitStatus === "does_not_meet").length,
+      saved: savedLeads.length,
+    };
+  }, [classifiedResults, results.length, savedLeads.length]);
+
+  const classifiedById = useMemo(() => {
+    const map: Record<string, ListingClassification> = {};
+    classifiedResults.forEach(c => { map[c.listingId] = c; });
+    return map;
+  }, [classifiedResults]);
+
+  // Listings visible in current tab (ranked order)
+  const visibleListings = useMemo(() => {
+    if (activeTab === "all") return ranked;
+    if (activeTab === "saved") {
+      return ranked.filter(c => savedLeadIds.has(c.listingId));
+    }
+    return ranked.filter(c => c.fitStatus === activeTab);
+  }, [ranked, activeTab, savedLeadIds]);
+
+  // The raw RentCast listings for visible classified results
+  const visibleRawListings = useMemo(() => {
+    const visibleSet = new Set(visibleListings.map(c => c.listingId));
+    return results.filter(l => visibleSet.has(l.id));
+  }, [results, visibleListings]);
+
   // ── Search This Area (map-driven) ────────────────────────────────────────
   function handleSearchThisArea(lat: number, lng: number, radiusMi: number) {
     setMapCenter({ lat, lng });
@@ -1095,6 +1238,22 @@ export default function PropertySearchClient({
         setSubmitted(true);
       }
     });
+  }
+
+  // ── Save property type preferences ──────────────────────────────────────
+  async function handleSavePreferences() {
+    setPrefsSaving(true);
+    setPrefsMsg(null);
+    const result = await savePropertyTypePreferencesAction(projectId, typePrefs);
+    setPrefsSaving(false);
+    if (result.ok) {
+      setPrefsMsg("Preferences saved.");
+      // Update fitCriteriaState so classification reruns immediately
+      setFitCriteriaState(prev => ({ ...prev, propertyTypePreferences: typePrefs }));
+      setTimeout(() => setPrefsMsg(null), 3000);
+    } else {
+      setPrefsMsg(result.error ?? "Could not save preferences.");
+    }
   }
 
   const lastSearchLabel = initialDraft.lastSearchAt
@@ -1180,6 +1339,90 @@ export default function PropertySearchClient({
           </div>
         )}
       </div>
+
+      {/* ── Suitable Property Types ──────────────────────────────────── */}
+      <section aria-labelledby="type-prefs-heading" className="mb-6">
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{ border: "1px solid var(--color-border)" }}
+        >
+          <button
+            type="button"
+            onClick={() => setShowTypeConfig((o) => !o)}
+            className="w-full flex items-center justify-between px-5 py-4 text-left"
+            style={{ backgroundColor: "var(--color-surface-soft)", color: "var(--color-primary)" }}
+            aria-expanded={showTypeConfig}
+            aria-controls="type-prefs-panel"
+          >
+            <span className="font-semibold text-sm" id="type-prefs-heading">
+              Suitable Property Types
+            </span>
+            <span aria-hidden="true">{showTypeConfig ? "▲" : "▼"}</span>
+          </button>
+          {showTypeConfig && (
+            <div id="type-prefs-panel" className="px-5 py-5 bg-white space-y-4">
+              <p className="text-xs" style={{ color: "var(--color-text)", opacity: 0.55 }}>
+                Set your preference for each property type. Preferred types strengthen a listing&apos;s fit rating; excluded types fail it.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {SUPPORTED_PROPERTY_TYPES.map((type) => (
+                  <div key={type} className="flex items-center justify-between gap-3">
+                    <label
+                      htmlFor={`pref-${type}`}
+                      className="text-sm font-medium"
+                      style={{ color: "var(--color-text)" }}
+                    >
+                      {type}
+                    </label>
+                    <select
+                      id={`pref-${type}`}
+                      value={typePrefs[type] ?? ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setTypePrefs((prev) => {
+                          const next = { ...prev };
+                          if (!val) {
+                            delete next[type];
+                          } else {
+                            next[type] = val as "preferred" | "acceptable" | "excluded";
+                          }
+                          return next;
+                        });
+                      }}
+                      style={{ ...fieldStyle, width: "auto", minWidth: "9rem" }}
+                    >
+                      <option value="">Not configured</option>
+                      <option value="preferred">Preferred</option>
+                      <option value="acceptable">Acceptable</option>
+                      <option value="excluded">Excluded</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleSavePreferences}
+                  disabled={prefsSaving}
+                  className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                  style={{ backgroundColor: "var(--color-action)" }}
+                >
+                  {prefsSaving ? "Saving…" : "Save Preferences"}
+                </button>
+                {prefsMsg && (
+                  <span
+                    className="text-xs"
+                    style={{ color: prefsMsg.includes("Could not") ? "#B91C1C" : "var(--color-secondary)" }}
+                    aria-live="polite"
+                  >
+                    {prefsMsg}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* ── Saved Leads Panel ────────────────────────────────────────── */}
       <SavedLeadsPanel leads={savedLeads} projectId={projectId} />
@@ -1423,7 +1666,7 @@ export default function PropertySearchClient({
       {/* ── Results ──────────────────────────────────────────────────── */}
       {submitted ? (
         <PropertyResultsLayout
-          listings={results}
+          listings={visibleRawListings}
           savedLeadIds={savedLeadIds}
           selectedId={selectedId}
           onSelectListing={setSelectedId}
@@ -1431,6 +1674,7 @@ export default function PropertySearchClient({
           initialCenter={mapCenter}
           initialRadius={mapRadius}
           isSearching={isSearching || isAreaSearching}
+          classifiedById={classifiedById}
           listContent={
             <section aria-labelledby="results-heading">
               <h2
@@ -1444,6 +1688,44 @@ export default function PropertySearchClient({
                   ? "No properties found"
                   : `Results — ${results.length} propert${results.length === 1 ? "y" : "ies"}`}
               </h2>
+
+              {/* Tab bar */}
+              {results.length > 0 && !isSearching && !isAreaSearching && (
+                <div
+                  role="tablist"
+                  aria-label="Filter results by fit"
+                  className="flex flex-wrap gap-1 mb-4"
+                >
+                  {(["all", "strong_fit", "review_needed", "does_not_meet", "saved"] as const).map((tab) => {
+                    const labels = {
+                      all: "All",
+                      strong_fit: "Strong Fit",
+                      review_needed: "Review Needed",
+                      does_not_meet: "Does Not Meet",
+                      saved: "Saved",
+                    };
+                    const count = counts[tab];
+                    const isActive = activeTab === tab;
+                    return (
+                      <button
+                        key={tab}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => setActiveTab(tab)}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-full"
+                        style={{
+                          backgroundColor: isActive ? "var(--color-primary)" : "var(--color-surface-soft)",
+                          color: isActive ? "#fff" : "var(--color-text)",
+                          border: "1px solid var(--color-border)",
+                        }}
+                      >
+                        {labels[tab]} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {searchError && (
                 <div
@@ -1475,7 +1757,7 @@ export default function PropertySearchClient({
 
               {!isSearching && !isAreaSearching && results.length > 0 && (
                 <ul className="space-y-4" aria-label="Property search results">
-                  {results.map((listing) => (
+                  {visibleRawListings.map((listing) => (
                     <ListingCard
                       key={listing.id || listing.formattedAddress}
                       listing={listing}
@@ -1483,6 +1765,7 @@ export default function PropertySearchClient({
                       isSelected={selectedId === listing.id}
                       onSelect={() => setSelectedId(prev => prev === listing.id ? null : listing.id)}
                       savedLeadIds={savedLeadIds}
+                      classification={classifiedById[listing.id]}
                       onSaved={(leadId) => {
                         // Add to savedLeads immediately so the ★ appears without a reload.
                         setSavedLeads(prev => {

@@ -30,6 +30,13 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import type { RentCastListing } from "@/lib/rentcast";
 import type { Map as MaplibreMap, GeoJSONSource } from "maplibre-gl";
+import type { ListingClassification } from "@/lib/property-relevance";
+
+const FIT_SYMBOL: Record<string, string> = {
+  strong_fit: "✓",
+  review_needed: "?",
+  does_not_meet: "×",
+};
 
 interface Props {
   listings: RentCastListing[];
@@ -41,6 +48,7 @@ interface Props {
   onMapError: () => void;
   initialCenter?: { lat: number; lng: number } | null;
   initialRadius?: number;
+  classifiedById?: Record<string, ListingClassification>;
 }
 
 const STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
@@ -85,6 +93,7 @@ export function PropertyMap({
   onMapError,
   initialCenter,
   initialRadius = DEFAULT_RADIUS,
+  classifiedById,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -164,16 +173,23 @@ export function PropertyMap({
           if (!map || !isMounted.current || styleFailed.current) return;
           setMapReady(true);
 
-          const features = validListings.map(l => ({
-            type: "Feature" as const,
-            geometry: { type: "Point" as const, coordinates: [l.longitude!, l.latitude!] },
-            properties: {
-              id: l.id,
-              rent: formatRent(l.price),
-              isSaved: savedLeadIds.has(l.id),
-              address: l.formattedAddress,
-            },
-          }));
+          const features = validListings.map(l => {
+            const cls = classifiedById?.[l.id];
+            const fitStatus = cls?.fitStatus ?? "review_needed";
+            const fitSymbol = savedLeadIds.has(l.id) ? "★" : (FIT_SYMBOL[fitStatus] ?? "?");
+            return {
+              type: "Feature" as const,
+              geometry: { type: "Point" as const, coordinates: [l.longitude!, l.latitude!] },
+              properties: {
+                id: l.id,
+                rent: formatRent(l.price),
+                isSaved: savedLeadIds.has(l.id),
+                address: l.formattedAddress,
+                fitStatus,
+                fitSymbol,
+              },
+            };
+          });
 
           map.addSource("listings", {
             type: "geojson",
@@ -235,14 +251,14 @@ export function PropertyMap({
             },
           });
 
-          // Rent label on unclustered markers
+          // Rent label on unclustered markers (fitSymbol + rent)
           map.addLayer({
             id: "unclustered-label",
             type: "symbol",
             source: "listings",
             filter: ["!", ["has", "point_count"]],
             layout: {
-              "text-field": "{rent}",
+              "text-field": "{fitSymbol} {rent}",
               "text-size": 10,
               "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
               "text-anchor": "center",
@@ -342,16 +358,23 @@ export function PropertyMap({
     if (!source) return;
 
     const validListings = listings.filter(l => l.latitude != null && l.longitude != null);
-    const features = validListings.map(l => ({
-      type: "Feature" as const,
-      geometry: { type: "Point" as const, coordinates: [l.longitude!, l.latitude!] },
-      properties: {
-        id: l.id,
-        rent: formatRent(l.price),
-        isSaved: savedLeadIds.has(l.id),
-        address: l.formattedAddress,
-      },
-    }));
+    const features = validListings.map(l => {
+      const cls = classifiedById?.[l.id];
+      const fitStatus = cls?.fitStatus ?? "review_needed";
+      const fitSymbol = savedLeadIds.has(l.id) ? "★" : (FIT_SYMBOL[fitStatus] ?? "?");
+      return {
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [l.longitude!, l.latitude!] },
+        properties: {
+          id: l.id,
+          rent: formatRent(l.price),
+          isSaved: savedLeadIds.has(l.id),
+          address: l.formattedAddress,
+          fitStatus,
+          fitSymbol,
+        },
+      };
+    });
 
     source.setData({ type: "FeatureCollection", features });
 
@@ -371,7 +394,7 @@ export function PropertyMap({
     }
 
     setMapMoved(false);
-  }, [listings, savedLeadIds, mapReady]);
+  }, [listings, savedLeadIds, mapReady, classifiedById]);
 
   // ── Update selected marker paint ─────────────────────────────────────────────
   useEffect(() => {
@@ -498,6 +521,27 @@ export function PropertyMap({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Legend overlay */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: "2.5rem",
+          left: "0.5rem",
+          backgroundColor: "rgba(255,255,255,0.92)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "0.5rem",
+          padding: "0.35rem 0.6rem",
+          fontSize: "0.7rem",
+          color: "var(--color-text)",
+          zIndex: 10,
+          pointerEvents: "none",
+          lineHeight: 1.6,
+        }}
+        aria-hidden="true"
+      >
+        ✓ Strong Fit &nbsp; ? Review Needed &nbsp; × Does Not Meet &nbsp; ★ Saved
       </div>
 
       {/* Empty state — shown when no listings have coordinates */}

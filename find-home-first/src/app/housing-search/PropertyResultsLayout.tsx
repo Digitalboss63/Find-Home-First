@@ -20,6 +20,7 @@
 import React, { useCallback, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import type { RentCastListing } from "@/lib/rentcast";
+import type { ListingClassification } from "@/lib/property-relevance";
 import { MapListToggle } from "./MapListToggle";
 
 // ── useSyncExternalStore for isMobile — avoids SSR/client hydration mismatch ──
@@ -51,6 +52,7 @@ interface Props {
   initialRadius?: number;
   listContent: React.ReactNode;
   isSearching: boolean;
+  classifiedById?: Record<string, ListingClassification>;
 }
 
 export function PropertyResultsLayout({
@@ -63,6 +65,7 @@ export function PropertyResultsLayout({
   initialRadius,
   listContent,
   isSearching,
+  classifiedById,
 }: Props) {
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
   const [mapFailed, setMapFailed] = useState(false);
@@ -147,6 +150,7 @@ export function PropertyResultsLayout({
                 onMapError={handleMapError}
                 initialCenter={initialCenter}
                 initialRadius={initialRadius}
+                classifiedById={classifiedById}
               />
             )}
           </div>

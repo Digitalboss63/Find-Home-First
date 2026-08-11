@@ -20,6 +20,7 @@ import {
   boolean,
   index,
   uniqueIndex,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 // ─── Organizations ──────────────────────────────────────────────────────────
@@ -674,6 +675,8 @@ export const projectMarketResearch = pgTable(
 
     // Section 4: Property Economics
     targetPropertyType: text("target_property_type"),
+    propertyTypePreferences: jsonb("property_type_preferences")
+      .$type<Record<string, "preferred" | "acceptable" | "excluded">>(),
     minimumBedrooms: text("minimum_bedrooms"),
     maxAcceptableLease: text("max_acceptable_lease"),
     estimatedUtilities: text("estimated_utilities"),

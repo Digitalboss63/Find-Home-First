@@ -1331,6 +1331,7 @@ export interface MarketResearchView {
   estimatedMonthlyRevenue: string | null;
   fundingNotes: string | null;
   targetPropertyType: string | null;
+  propertyTypePreferences: Record<string, "preferred" | "acceptable" | "excluded"> | null;
   minimumBedrooms: string | null;
   maxAcceptableLease: string | null;
   estimatedUtilities: string | null;
@@ -1396,6 +1397,7 @@ export async function getMarketResearch(
       estimatedMonthlyRevenue: r.estimatedMonthlyRevenue,
       fundingNotes: r.fundingNotes,
       targetPropertyType: r.targetPropertyType,
+      propertyTypePreferences: (r.propertyTypePreferences as Record<string, "preferred" | "acceptable" | "excluded"> | null) ?? null,
       minimumBedrooms: r.minimumBedrooms,
       maxAcceptableLease: r.maxAcceptableLease,
       estimatedUtilities: r.estimatedUtilities,
