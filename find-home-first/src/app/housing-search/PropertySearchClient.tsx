@@ -380,7 +380,11 @@ function ListingCard({
       setSaving(false);
       if (result.duplicate) {
         setSaveMsg("Already saved in your pipeline.");
-        if (result.leadId) setLeadId(result.leadId);
+        if (result.leadId) {
+          setLeadId(result.leadId);
+          // Already in DB — still notify parent so ★ appears if session started before save
+          onSaved?.(result.leadId);
+        }
       } else if (result.ok) {
         setSaveMsg("Saved to your property leads.");
         if (result.leadId) {
@@ -506,8 +510,8 @@ function ListingCard({
           )}
         </div>
 
-        {/* Actions */}
-        <div className="flex flex-wrap items-center gap-2 mb-3">
+        {/* Actions — stopPropagation so button clicks don't deselect the card */}
+        <div className="flex flex-wrap items-center gap-2 mb-3" onClick={e => e.stopPropagation()}>
           <button
             type="button"
             onClick={handleSave}
@@ -530,14 +534,16 @@ function ListingCard({
           )}
         </div>
 
-        {/* On-demand owner enrichment */}
+        {/* On-demand owner enrichment — stopPropagation so clicks don't deselect card */}
         {listing.id && (
-          <OwnerPanel
-            propertyId={listing.id}
-            leadId={leadId}
-            projectId={projectId}
-            listing={listing}
-          />
+          <div onClick={e => e.stopPropagation()}>
+            <OwnerPanel
+              propertyId={listing.id}
+              leadId={leadId}
+              projectId={projectId}
+              listing={listing}
+            />
+          </div>
         )}
       </div>
     </li>
