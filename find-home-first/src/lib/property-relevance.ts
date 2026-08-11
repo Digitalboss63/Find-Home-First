@@ -38,6 +38,8 @@ export interface FitReason {
 export interface PropertyFitCriteria {
   city?: string | null;
   state?: string | null;
+  mapLatitude?: number | null;
+  mapLongitude?: number | null;
   mapRadiusMi?: number | null;
   propertyTypePreferences?: PropertyTypePreferences | null;
   minimumBedrooms?: number | null;
@@ -58,6 +60,7 @@ export interface ListingClassification {
   fitStatus: FitClassification;
   reasons: FitReason[];
   adjustedMargin: number | null;
+  isSaved: boolean;
   isDuplicate: boolean;
   isSuspectedDuplicate: boolean;
 }
@@ -167,6 +170,33 @@ interface ListingInput {
   bedrooms?: number | null;
   bathrooms?: number | null;
   price?: number | null;
+  city?: string | null;
+  state?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+function normalizeText(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+/** Great-circle distance in miles. Pure math; no geocoding or network call. */
+export function distanceMiles(
+  latitudeA: number,
+  longitudeA: number,
+  latitudeB: number,
+  longitudeB: number
+): number {
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const earthRadiusMiles = 3958.8;
+  const latitudeDelta = toRadians(latitudeB - latitudeA);
+  const longitudeDelta = toRadians(longitudeB - longitudeA);
+  const a =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(toRadians(latitudeA)) *
+      Math.cos(toRadians(latitudeB)) *
+      Math.sin(longitudeDelta / 2) ** 2;
+  return earthRadiusMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 /**
@@ -191,6 +221,7 @@ export function classifyListing(
   let hasAcceptable = false;
   let hasPreferred = false;
   let hasCriterionConfigured = false;
+  const isSaved = savedLeadIds.has(listing.id);
 
   // ── Address check ────────────────────────────────────────────────────────
   const address = listing.formattedAddress || listing.addressLine1 || "";
@@ -200,21 +231,96 @@ export function classifyListing(
       fitStatus: "does_not_meet",
       reasons: [{ status: "fail", text: "Missing or empty address" }],
       adjustedMargin: null,
-      isDuplicate: seenIds.has(listing.id),
+      isSaved,
+      isDuplicate: isSaved || seenIds.has(listing.id),
       isSuspectedDuplicate: false,
     };
   }
 
   // ── Duplicate detection ──────────────────────────────────────────────────
-  const isDuplicate = seenIds.has(listing.id);
+  const isDuplicate = isSaved || seenIds.has(listing.id);
   let isSuspectedDuplicate = false;
   const baseAddr = extractBaseAddress(address);
   if (baseAddr) {
-    const existingId = seenAddresses.get(baseAddr);
+    const unitId = extractUnitId(address);
+    const addressKey = `${normalizeAddress(baseAddr)}|${unitId}`;
+    const existingId = seenAddresses.get(addressKey);
     if (existingId && existingId !== listing.id) {
       isSuspectedDuplicate = true;
+      reasons.push({
+        status: "info",
+        text: "Another listing at this address is also in the results — verify it is not a duplicate",
+      });
     } else if (!existingId) {
-      seenAddresses.set(baseAddr, listing.id);
+      seenAddresses.set(addressKey, listing.id);
+    }
+  }
+
+  if (isSaved) {
+    reasons.push({ status: "info", text: "Already saved for this project" });
+  }
+
+  // ── Geography check ──────────────────────────────────────────────────────
+  const hasRadiusCriterion =
+    criteria.mapLatitude != null &&
+    criteria.mapLongitude != null &&
+    criteria.mapRadiusMi != null;
+
+  if (hasRadiusCriterion) {
+    hasCriterionConfigured = true;
+    if (listing.latitude == null || listing.longitude == null) {
+      hasMissing = true;
+      reasons.push({ status: "missing", text: "Coordinates not available for the selected map area" });
+    } else {
+      const distance = distanceMiles(
+        criteria.mapLatitude!,
+        criteria.mapLongitude!,
+        listing.latitude,
+        listing.longitude
+      );
+      if (distance > criteria.mapRadiusMi!) {
+        hasFail = true;
+        reasons.push({
+          status: "fail",
+          text: `${distance.toFixed(1)} miles from map center exceeds the ${criteria.mapRadiusMi}-mile area`,
+        });
+      } else {
+        reasons.push({
+          status: "pass",
+          text: `Within the selected ${criteria.mapRadiusMi}-mile map area`,
+        });
+      }
+    }
+  } else if (criteria.city || criteria.state) {
+    hasCriterionConfigured = true;
+    if (criteria.city) {
+      if (!normalizeText(listing.city)) {
+        hasMissing = true;
+        reasons.push({ status: "missing", text: "Listing city not available" });
+      } else if (normalizeText(listing.city) !== normalizeText(criteria.city)) {
+        hasFail = true;
+        reasons.push({
+          status: "fail",
+          text: `Listing city (${listing.city}) does not match target city (${criteria.city})`,
+        });
+      } else {
+        reasons.push({ status: "pass", text: `Within target city (${criteria.city})` });
+      }
+    }
+
+    if (criteria.state) {
+      if (!normalizeText(listing.state)) {
+        hasMissing = true;
+        reasons.push({ status: "missing", text: "Listing state not available" });
+      } else if (normalizeText(listing.state) !== normalizeText(criteria.state)) {
+        hasFail = true;
+        reasons.push({
+          status: "fail",
+          text: `Listing state (${listing.state}) does not match target state (${criteria.state})`,
+        });
+      } else {
+        reasons.push({ status: "pass", text: `Within target state (${criteria.state})` });
+      }
     }
   }
 
@@ -246,8 +352,9 @@ export function classifyListing(
       }
     }
   } else {
-    // No prefs configured → info, no universal exclusion
-    reasons.push({ status: "info", text: "No property type preferences configured" });
+    // No prefs configured → cannot confirm a strong fit, but never exclude.
+    hasMissing = true;
+    reasons.push({ status: "missing", text: "Property types have not been configured for this project" });
   }
 
   // ── Bedrooms check ───────────────────────────────────────────────────────
@@ -360,6 +467,7 @@ export function classifyListing(
     fitStatus,
     reasons,
     adjustedMargin,
+    isSaved,
     isDuplicate,
     isSuspectedDuplicate,
   };
@@ -385,9 +493,18 @@ export function rankListings(
   };
 
   return [...classified].sort((a, b) => {
+    if (a.isSaved !== b.isSaved) return a.isSaved ? -1 : 1;
     const aOrder = order[a.fitStatus];
     const bOrder = order[b.fitStatus];
-    return aOrder - bOrder;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+
+    if (a.adjustedMargin == null && b.adjustedMargin != null) return 1;
+    if (a.adjustedMargin != null && b.adjustedMargin == null) return -1;
+    if (a.adjustedMargin != null && b.adjustedMargin != null) {
+      return b.adjustedMargin - a.adjustedMargin;
+    }
+
+    return 0;
   });
 }
 

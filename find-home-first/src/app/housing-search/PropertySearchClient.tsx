@@ -36,6 +36,12 @@ import {
   type PropertyTypePreferences,
   type ListingClassification,
 } from "@/lib/property-relevance";
+import {
+  makeAreaSearchFingerprint,
+  makePropertySearchFingerprint,
+  restoreSuccessfulFingerprint,
+} from "@/lib/property-search-state";
+import { buildGoogleStreetViewUrl } from "@/lib/google-maps-url";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -126,6 +132,12 @@ function formatDate(iso: string | null) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function parseSearchDate(value: Date | string | null): Date | null {
+  if (value == null) return null;
+  const parsed = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function prefersReducedMotion(): boolean {
@@ -413,6 +425,7 @@ function ListingCard({
   // Pre-enrichment opportunity score from listing data only
   const preScore = useMemo(() => scoreFromListing(listing), [listing]);
   const isSaved = listing.id ? savedLeadIds.has(listing.id) : false;
+  const streetViewUrl = buildGoogleStreetViewUrl(listing.latitude, listing.longitude);
 
   function handleSave() {
     startTransition(async () => {
@@ -538,6 +551,26 @@ function ListingCard({
           <FitReasonsPanel reasons={classification.reasons} />
         )}
 
+        {classification?.adjustedMargin != null && (
+          <div
+            className="rounded-lg px-3 py-2 mb-3 text-xs"
+            style={{ backgroundColor: "#F8FAFC", border: "1px solid var(--color-border)" }}
+          >
+            <p className="font-semibold" style={{ color: "var(--color-primary)" }}>
+              Estimated adjusted monthly margin: {formatCurrency(classification.adjustedMargin)}
+            </p>
+            <p className="mt-0.5" style={{ color: "var(--color-text)", opacity: 0.65 }}>
+              Based on City Report assumptions; verify before committing to a lease.
+            </p>
+          </div>
+        )}
+
+        {classification?.isSuspectedDuplicate && (
+          <p className="mb-3 text-xs" style={{ color: "#92400E" }}>
+            ? Another result uses this same address and unit. Verify it is not a duplicate.
+          </p>
+        )}
+
         {/* Metadata grid */}
         <div
           className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-xs mt-3 mb-4"
@@ -582,7 +615,16 @@ function ListingCard({
         {/* Actions — stopPropagation so button clicks don't deselect the card */}
         <div className="flex flex-wrap items-center gap-2 mb-3" onClick={e => e.stopPropagation()}>
           {/* Show "Save Anyway" on does_not_meet, otherwise "Save Property Lead" */}
-          {classification?.fitStatus === "does_not_meet" ? (
+          {isSaved ? (
+            <button
+              type="button"
+              disabled
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+              style={{ border: "1px solid #F59E0B", backgroundColor: "#FFFBEB", color: "#92400E" }}
+            >
+              ★ Saved Property Lead
+            </button>
+          ) : classification?.fitStatus === "does_not_meet" ? (
             <button
               type="button"
               onClick={handleSave}
@@ -607,6 +649,23 @@ function ListingCard({
               {saving ? "Saving…" : "Save Property Lead"}
             </button>
           )}
+          {streetViewUrl && (
+            <a
+              href={streetViewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+              style={{
+                border: "1px solid var(--color-border)",
+                backgroundColor: "#fff",
+                color: "var(--color-secondary)",
+                textDecoration: "none",
+              }}
+              aria-label={`View latest available Google Street View for ${listing.formattedAddress || listing.addressLine1}`}
+            >
+              View latest Street View ↗
+            </a>
+          )}
           {saveMsg && (
             <span
               className="text-xs"
@@ -619,6 +678,12 @@ function ListingCard({
             </span>
           )}
         </div>
+
+        {streetViewUrl && (
+          <p className="mb-3 text-xs" style={{ color: "var(--color-text)", opacity: 0.65 }}>
+            Latest available Google Street View; it may not show the exact property or its current condition.
+          </p>
+        )}
 
         {/* On-demand owner enrichment — stopPropagation so clicks don't deselect card */}
         {listing.id && (
@@ -1011,6 +1076,9 @@ export default function PropertySearchClient({
   fitCriteria,
   initialPropertyTypePreferences,
 }: Props) {
+  const restoredSearchAt = parseSearchDate(
+    initialDraft.lastSearchAt as Date | string | null
+  );
   // ── Saved leads — tracked as state so the ★ appears immediately on save ──
   const [savedLeads, setSavedLeads] = useState<PropertyLeadView[]>(initialSavedLeads);
 
@@ -1020,7 +1088,9 @@ export default function PropertySearchClient({
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [prefsMsg, setPrefsMsg] = useState<string | null>(null);
   const [showTypeConfig, setShowTypeConfig] = useState(false);
-  const [activeTab, setActiveTab] = useState<"all" | "strong_fit" | "review_needed" | "does_not_meet" | "saved">("all");
+  const [activeTab, setActiveTab] = useState<
+    "recommended" | "all" | "strong_fit" | "review_needed" | "does_not_meet" | "saved"
+  >("recommended");
 
   // ── Filter state — initialised from server-loaded draft ─────────────────
   const [city, setCity] = useState(initialDraft.city);
@@ -1038,6 +1108,21 @@ export default function PropertySearchClient({
   const [results, setResults] = useState<RentCastListing[]>(() =>
     parseSnapshot(initialDraft.resultsSnapshot)
   );
+  const lastSuccessfulFp = useRef<string | null>(
+    restoreSuccessfulFingerprint(initialDraft)
+  );
+  const resultsSnapshotRef = useRef<string | null>(
+    restoreSuccessfulFingerprint(initialDraft) ? initialDraft.resultsSnapshot : null
+  );
+  const resultsCountRef = useRef<number>(
+    restoreSuccessfulFingerprint(initialDraft) ? parseSnapshot(initialDraft.resultsSnapshot).length : 0
+  );
+  const lastSearchAtRef = useRef<Date | null>(restoredSearchAt);
+  const [lastSuccessfulSearchAt, setLastSuccessfulSearchAt] = useState<Date | null>(
+    restoredSearchAt
+  );
+  const [showingCachedResults, setShowingCachedResults] = useState(false);
+  const [criteriaChanged, setCriteriaChanged] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isSearching, startSearch] = useTransition();
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -1052,6 +1137,7 @@ export default function PropertySearchClient({
       : null
   );
   const [mapRadius, setMapRadius] = useState<number>(initialDraft.mapRadiusMi ?? 10);
+  const [mapMode, setMapMode] = useState(initialDraft.mapMode);
   const [isAreaSearching, startAreaSearch] = useTransition();
 
   // ── Draft helpers ────────────────────────────────────────────────────────
@@ -1068,14 +1154,14 @@ export default function PropertySearchClient({
       maxDaysListed,
       listingStatus,
       submitted,
-      lastSearchAt: initialDraft.lastSearchAt,
-      resultsSnapshot: initialDraft.resultsSnapshot,
-      resultsCount: initialDraft.resultsCount,
-      queryFingerprint: initialDraft.queryFingerprint,
-      mapLatitude: initialDraft.mapLatitude,
-      mapLongitude: initialDraft.mapLongitude,
-      mapRadiusMi: initialDraft.mapRadiusMi,
-      mapMode: initialDraft.mapMode,
+      lastSearchAt: lastSearchAtRef.current,
+      resultsSnapshot: resultsSnapshotRef.current,
+      resultsCount: resultsCountRef.current,
+      queryFingerprint: lastSuccessfulFp.current,
+      mapLatitude: mapCenter ? String(mapCenter.lat) : null,
+      mapLongitude: mapCenter ? String(mapCenter.lng) : null,
+      mapRadiusMi: mapRadius,
+      mapMode,
     };
   }
 
@@ -1096,15 +1182,26 @@ export default function PropertySearchClient({
     value: string
   ) {
     setter(value);
+    setCriteriaChanged(true);
+    setShowingCachedResults(false);
     const draft = { ...currentDraft(), [key]: value };
     debouncedSave(draft);
   }
 
   // ── Search ───────────────────────────────────────────────────────────────
-  function handleSearch() {
+  function handleSearch(forceRefresh = false) {
     const draft = currentDraft();
+    const currentFingerprint = makePropertySearchFingerprint(draft);
+
+    if (!forceRefresh && lastSuccessfulFp.current === currentFingerprint) {
+      setShowingCachedResults(true);
+      setSearchError(null);
+      return;
+    }
+
     setSubmitted(true);
     setSearchError(null);
+    setShowingCachedResults(false);
 
     startSearch(async () => {
       const result = await searchPropertiesAction({
@@ -1114,9 +1211,24 @@ export default function PropertySearchClient({
       });
       if (result.error) {
         setSearchError(result.error);
-        setResults([]);
       } else {
         setResults(result.listings);
+        const fingerprint = result.queryFingerprint ?? currentFingerprint;
+        const searchedAt = result.searchedAt ? new Date(result.searchedAt) : new Date();
+        lastSuccessfulFp.current = fingerprint;
+        resultsSnapshotRef.current = JSON.stringify(result.listings);
+        resultsCountRef.current = result.listings.length;
+        lastSearchAtRef.current = searchedAt;
+        setLastSuccessfulSearchAt(searchedAt);
+        setCriteriaChanged(false);
+        setMapMode("list");
+        setFitCriteriaState(prev => ({
+          ...prev,
+          mapLatitude: null,
+          mapLongitude: null,
+          mapRadiusMi: null,
+        }));
+        setActiveTab("recommended");
       }
     });
   }
@@ -1140,6 +1252,21 @@ export default function PropertySearchClient({
     setMinBedrooms(""); setMinBathrooms(""); setMaxRent("");
     setMaxDaysListed(""); setListingStatus("active");
     setSubmitted(false); setResults([]); setSearchError(null);
+    lastSuccessfulFp.current = null;
+    resultsSnapshotRef.current = null;
+    resultsCountRef.current = 0;
+    lastSearchAtRef.current = null;
+    setLastSuccessfulSearchAt(null);
+    setShowingCachedResults(false);
+    setCriteriaChanged(false);
+    setMapMode("list");
+    setFitCriteriaState(prev => ({
+      ...prev,
+      mapLatitude: null,
+      mapLongitude: null,
+      mapRadiusMi: null,
+    }));
+    setActiveTab("recommended");
 
     startTransition(async () => {
       setSaveStatus("saving");
@@ -1175,14 +1302,16 @@ export default function PropertySearchClient({
   );
 
   const counts = useMemo(() => {
+    const savedInResults = classifiedResults.filter(c => c.isSaved).length;
     return {
       all: results.length,
+      recommended: classifiedResults.filter(c => c.fitStatus !== "does_not_meet" || c.isSaved).length,
       strong_fit: classifiedResults.filter(c => c.fitStatus === "strong_fit").length,
       review_needed: classifiedResults.filter(c => c.fitStatus === "review_needed").length,
       does_not_meet: classifiedResults.filter(c => c.fitStatus === "does_not_meet").length,
-      saved: savedLeads.length,
+      saved: savedInResults,
     };
-  }, [classifiedResults, results.length, savedLeads.length]);
+  }, [classifiedResults, results.length]);
 
   const classifiedById = useMemo(() => {
     const map: Record<string, ListingClassification> = {};
@@ -1193,31 +1322,47 @@ export default function PropertySearchClient({
   // Listings visible in current tab (ranked order)
   const visibleListings = useMemo(() => {
     if (activeTab === "all") return ranked;
+    if (activeTab === "recommended") {
+      return ranked.filter(c => c.fitStatus !== "does_not_meet" || c.isSaved);
+    }
     if (activeTab === "saved") {
-      return ranked.filter(c => savedLeadIds.has(c.listingId));
+      return ranked.filter(c => c.isSaved);
     }
     return ranked.filter(c => c.fitStatus === activeTab);
-  }, [ranked, activeTab, savedLeadIds]);
+  }, [ranked, activeTab]);
 
   // The raw RentCast listings for visible classified results
   const visibleRawListings = useMemo(() => {
-    const visibleSet = new Set(visibleListings.map(c => c.listingId));
-    return results.filter(l => visibleSet.has(l.id));
+    const byId = new Map(results.map(listing => [listing.id, listing]));
+    return visibleListings
+      .map(classification => byId.get(classification.listingId))
+      .filter((listing): listing is RentCastListing => listing !== undefined);
   }, [results, visibleListings]);
 
   // ── Search This Area (map-driven) ────────────────────────────────────────
-  function handleSearchThisArea(lat: number, lng: number, radiusMi: number) {
+  function handleSearchThisArea(lat: number, lng: number, radiusMi: number, forceRefresh = false) {
+    const currentFingerprint = makeAreaSearchFingerprint({
+      latitude: lat,
+      longitude: lng,
+      radiusMiles: radiusMi,
+      propertyType,
+      minBedrooms,
+      minBathrooms,
+      maxRent,
+      maxDaysListed,
+      listingStatus,
+    });
+
+    if (!forceRefresh && lastSuccessfulFp.current === currentFingerprint) {
+      setShowingCachedResults(true);
+      setSearchError(null);
+      return;
+    }
+
     setMapCenter({ lat, lng });
     setMapRadius(radiusMi);
-    // Persist map state to draft
-    startTransition(async () => {
-      await saveDraftAction({
-        ...currentDraft(),
-        mapLatitude: String(lat),
-        mapLongitude: String(lng),
-        mapRadiusMi: radiusMi,
-      });
-    });
+    setSearchError(null);
+    setShowingCachedResults(false);
     startAreaSearch(async () => {
       const result = await searchThisAreaAction({
         projectId,
@@ -1236,8 +1381,31 @@ export default function PropertySearchClient({
       } else {
         setResults(result.listings);
         setSubmitted(true);
+        const searchedAt = result.searchedAt ? new Date(result.searchedAt) : new Date();
+        lastSuccessfulFp.current = result.queryFingerprint ?? currentFingerprint;
+        resultsSnapshotRef.current = JSON.stringify(result.listings);
+        resultsCountRef.current = result.listings.length;
+        lastSearchAtRef.current = searchedAt;
+        setLastSuccessfulSearchAt(searchedAt);
+        setCriteriaChanged(false);
+        setMapMode("map");
+        setFitCriteriaState(prev => ({
+          ...prev,
+          mapLatitude: lat,
+          mapLongitude: lng,
+          mapRadiusMi: radiusMi,
+        }));
+        setActiveTab("recommended");
       }
     });
+  }
+
+  function handleRefreshResults() {
+    if (mapMode === "map" && mapCenter) {
+      handleSearchThisArea(mapCenter.lat, mapCenter.lng, mapRadius, true);
+      return;
+    }
+    handleSearch(true);
   }
 
   // ── Save property type preferences ──────────────────────────────────────
@@ -1256,8 +1424,32 @@ export default function PropertySearchClient({
     }
   }
 
-  const lastSearchLabel = initialDraft.lastSearchAt
-    ? `Last searched ${new Date(initialDraft.lastSearchAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+  const restrictiveFilters = [
+    zipCode
+      ? { key: "zip", label: `ZIP ${zipCode}`, clear: () => handleFieldChange(setZipCode, "zipCode", "") }
+      : null,
+    propertyType
+      ? { key: "type", label: propertyType, clear: () => handleFieldChange(setPropertyType, "propertyType", "") }
+      : null,
+    minBedrooms
+      ? { key: "beds", label: `${minBedrooms}+ beds`, clear: () => handleFieldChange(setMinBedrooms, "minBedrooms", "") }
+      : null,
+    minBathrooms
+      ? { key: "baths", label: `${minBathrooms}+ baths`, clear: () => handleFieldChange(setMinBathrooms, "minBathrooms", "") }
+      : null,
+    maxRent
+      ? { key: "rent", label: `max $${Number(maxRent).toLocaleString()}/mo`, clear: () => handleFieldChange(setMaxRent, "maxRent", "") }
+      : null,
+    maxDaysListed
+      ? { key: "days", label: `listed within ${maxDaysListed} days`, clear: () => handleFieldChange(setMaxDaysListed, "maxDaysListed", "") }
+      : null,
+    listingStatus === "inactive"
+      ? { key: "status", label: "Inactive listings", clear: () => handleFieldChange(setListingStatus, "listingStatus", "active") }
+      : null,
+  ].filter((filter): filter is { key: string; label: string; clear: () => void } => filter !== null);
+
+  const lastSearchLabel = lastSuccessfulSearchAt
+    ? `Last searched ${lastSuccessfulSearchAt.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
     : null;
 
   return (
@@ -1650,6 +1842,23 @@ export default function PropertySearchClient({
                 </div>
               )}
 
+              {submitted && !isSearching && lastSuccessfulFp.current && (
+                <button
+                  type="button"
+                  onClick={handleRefreshResults}
+                  disabled={isPending || !rentCastConfigured}
+                  className="text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-40"
+                  style={{
+                    border: "1px solid var(--color-border)",
+                    color: "var(--color-secondary)",
+                    backgroundColor: "#fff",
+                  }}
+                  title="Retrieve fresh property data"
+                >
+                  Refresh Results
+                </button>
+              )}
+
               {submitted && !isSearching && (
                 <span className="text-xs" style={{ color: "var(--color-secondary)" }}>
                   {results.length} result{results.length !== 1 ? "s" : ""}
@@ -1659,6 +1868,17 @@ export default function PropertySearchClient({
           </form>
         </div>
       </section>
+
+      {criteriaChanged && !isSearching && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-lg px-4 py-3 mb-6 text-sm"
+          style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1E3A5F" }}
+        >
+          Criteria changed. Press <strong>Search Properties</strong> when you are ready.
+        </div>
+      )}
 
       {/* ── Manual property lead form ────────────────────────────────── */}
       <ManualLeadForm projectId={projectId} />
@@ -1686,7 +1906,9 @@ export default function PropertySearchClient({
                   ? "Searching…"
                   : results.length === 0
                   ? "No properties found"
-                  : `Results — ${results.length} propert${results.length === 1 ? "y" : "ies"}`}
+                  : activeTab === "all"
+                  ? `Results — ${results.length} propert${results.length === 1 ? "y" : "ies"}`
+                  : `Showing ${visibleRawListings.length} of ${results.length} properties`}
               </h2>
 
               {/* Tab bar */}
@@ -1696,8 +1918,9 @@ export default function PropertySearchClient({
                   aria-label="Filter results by fit"
                   className="flex flex-wrap gap-1 mb-4"
                 >
-                  {(["all", "strong_fit", "review_needed", "does_not_meet", "saved"] as const).map((tab) => {
+                  {(["recommended", "all", "strong_fit", "review_needed", "does_not_meet", "saved"] as const).map((tab) => {
                     const labels = {
+                      recommended: "Recommended",
                       all: "All",
                       strong_fit: "Strong Fit",
                       review_needed: "Review Needed",
@@ -1727,6 +1950,30 @@ export default function PropertySearchClient({
                 </div>
               )}
 
+              {showingCachedResults && !isSearching && !isAreaSearching && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-5 py-4 mb-4 text-sm"
+                  style={{ backgroundColor: "#ECFDF5", border: "1px solid #A7F3D0", color: "#065F46" }}
+                >
+                  <span>
+                    ✓ Showing saved results
+                    {lastSuccessfulSearchAt
+                      ? ` from ${lastSuccessfulSearchAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+                      : ""}. No new property-data request was made.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRefreshResults}
+                    className="rounded-lg px-3 py-1.5 text-xs font-semibold"
+                    style={{ border: "1px solid #6EE7B7", backgroundColor: "#fff", color: "#065F46" }}
+                  >
+                    Refresh
+                  </button>
+                </div>
+              )}
+
               {searchError && (
                 <div
                   className="rounded-xl px-5 py-4 mb-4 text-sm"
@@ -1743,15 +1990,45 @@ export default function PropertySearchClient({
 
               {!isSearching && !isAreaSearching && results.length === 0 && !searchError && (
                 <div
-                  className="rounded-xl px-6 py-10 text-center"
+                  className="rounded-xl px-6 py-6"
                   style={{
-                    backgroundColor: "var(--color-surface-soft)",
-                    border: "1px solid var(--color-border)",
+                    backgroundColor: "#FFFBEB",
+                    border: "1px solid #FDE68A",
                   }}
                 >
-                  <p className="text-sm mb-2" style={{ color: "var(--color-text)", opacity: 0.65 }}>
-                    No properties matched your criteria. Try broadening your search.
-                  </p>
+                  <h3 className="text-sm font-semibold mb-2" style={{ color: "#78350F" }}>
+                    No properties matched these filters
+                  </h3>
+                  {restrictiveFilters.length > 0 ? (
+                    <>
+                      <p className="text-xs mb-3" style={{ color: "#92400E" }}>
+                        Remove a restrictive filter, then press <strong>Search Properties</strong> to run a broader search.
+                      </p>
+                      <div className="flex flex-wrap gap-2 mb-4" aria-label="Restrictive filters">
+                        {restrictiveFilters.map(filter => (
+                          <button
+                            key={filter.key}
+                            type="button"
+                            onClick={filter.clear}
+                            className="rounded-full px-3 py-1.5 text-xs font-semibold"
+                            style={{ backgroundColor: "#FEF3C7", border: "1px solid #F59E0B", color: "#78350F" }}
+                            aria-label={`Remove ${filter.label} filter`}
+                          >
+                            {filter.label} ×
+                          </button>
+                        ))}
+                      </div>
+                      <ul className="space-y-1 text-xs" style={{ color: "#92400E" }}>
+                        {zipCode && city && <li>Try removing ZIP {zipCode} to search all of {city}.</li>}
+                        {maxRent && <li>Try increasing the maximum monthly lease above ${Number(maxRent).toLocaleString()}, or remove the limit.</li>}
+                        {(propertyType || minBedrooms || minBathrooms) && <li>Try loosening the property type, bedroom, or bathroom requirements.</li>}
+                      </ul>
+                    </>
+                  ) : (
+                    <p className="text-sm" style={{ color: "#92400E" }}>
+                      RentCast returned a valid empty result for this area. Change the city or state, then search again.
+                    </p>
+                  )}
                 </div>
               )}
 

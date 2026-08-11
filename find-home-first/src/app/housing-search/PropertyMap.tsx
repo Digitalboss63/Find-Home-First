@@ -31,6 +31,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import type { RentCastListing } from "@/lib/rentcast";
 import type { Map as MaplibreMap, GeoJSONSource } from "maplibre-gl";
 import type { ListingClassification } from "@/lib/property-relevance";
+import { buildGoogleStreetViewUrl } from "@/lib/google-maps-url";
 
 const FIT_SYMBOL: Record<string, string> = {
   strong_fit: "✓",
@@ -104,6 +105,13 @@ export function PropertyMap({
   );
   const isMounted = useRef(true);
   const styleFailed = useRef(false);
+  const selectedListing = selectedId
+    ? listings.find(listing => listing.id === selectedId) ?? null
+    : null;
+  const selectedStreetViewUrl = buildGoogleStreetViewUrl(
+    selectedListing?.latitude,
+    selectedListing?.longitude,
+  );
 
   // ── Initialize map ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -176,7 +184,7 @@ export function PropertyMap({
           const features = validListings.map(l => {
             const cls = classifiedById?.[l.id];
             const fitStatus = cls?.fitStatus ?? "review_needed";
-            const fitSymbol = savedLeadIds.has(l.id) ? "★" : (FIT_SYMBOL[fitStatus] ?? "?");
+            const fitSymbol = FIT_SYMBOL[fitStatus] ?? "?";
             return {
               type: "Feature" as const,
               geometry: { type: "Point" as const, coordinates: [l.longitude!, l.latitude!] },
@@ -235,10 +243,12 @@ export function PropertyMap({
             filter: ["!", ["has", "point_count"]],
             paint: {
               "circle-color": [
-                "case",
-                ["==", ["get", "id"], selectedId ?? ""],
+                "match",
+                ["get", "fitStatus"],
+                "strong_fit", "#173F5F",
+                "review_needed", "#B45309",
+                "does_not_meet", "#6B7280",
                 "#B45309",
-                "#173F5F",
               ],
               "circle-radius": 14,
               "circle-stroke-width": [
@@ -247,7 +257,12 @@ export function PropertyMap({
                 3,
                 1,
               ],
-              "circle-stroke-color": "#fff",
+              "circle-stroke-color": [
+                "case",
+                ["==", ["get", "id"], selectedId ?? ""],
+                "#111827",
+                "#fff",
+              ],
             },
           });
 
@@ -361,7 +376,7 @@ export function PropertyMap({
     const features = validListings.map(l => {
       const cls = classifiedById?.[l.id];
       const fitStatus = cls?.fitStatus ?? "review_needed";
-      const fitSymbol = savedLeadIds.has(l.id) ? "★" : (FIT_SYMBOL[fitStatus] ?? "?");
+      const fitSymbol = FIT_SYMBOL[fitStatus] ?? "?";
       return {
         type: "Feature" as const,
         geometry: { type: "Point" as const, coordinates: [l.longitude!, l.latitude!] },
@@ -402,16 +417,24 @@ export function PropertyMap({
     if (!map || !mapReady || !map.getLayer("unclustered-point")) return;
 
     map.setPaintProperty("unclustered-point", "circle-color", [
-      "case",
-      ["==", ["get", "id"], selectedId ?? ""],
+      "match",
+      ["get", "fitStatus"],
+      "strong_fit", "#173F5F",
+      "review_needed", "#B45309",
+      "does_not_meet", "#6B7280",
       "#B45309",
-      "#173F5F",
     ]);
     map.setPaintProperty("unclustered-point", "circle-stroke-width", [
       "case",
       ["==", ["get", "id"], selectedId ?? ""],
       3,
       1,
+    ]);
+    map.setPaintProperty("unclustered-point", "circle-stroke-color", [
+      "case",
+      ["==", ["get", "id"], selectedId ?? ""],
+      "#111827",
+      "#fff",
     ]);
 
     // Center and zoom on selected listing so the marker is visible.
@@ -523,6 +546,61 @@ export function PropertyMap({
         </div>
       </div>
 
+      {/* Selected-property action. Google content opens externally so it is not
+          mixed into the OpenFreeMap/MapLibre map and creates no API request. */}
+      {selectedListing && selectedStreetViewUrl && (
+        <div
+          style={{
+            position: "absolute",
+            right: "0.5rem",
+            bottom: "2.5rem",
+            zIndex: 10,
+            maxWidth: "17rem",
+            backgroundColor: "rgba(255,255,255,0.96)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "0.75rem",
+            padding: "0.65rem 0.75rem",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.14)",
+          }}
+          role="status"
+          aria-label="Selected property Street View action"
+        >
+          <p
+            style={{
+              margin: "0 0 0.4rem",
+              color: "var(--color-primary)",
+              fontSize: "0.75rem",
+              fontWeight: 700,
+              lineHeight: 1.35,
+            }}
+          >
+            {selectedListing.formattedAddress || selectedListing.addressLine1}
+          </p>
+          <a
+            href={selectedStreetViewUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`View latest available Google Street View for ${selectedListing.formattedAddress || selectedListing.addressLine1}`}
+            style={{
+              display: "inline-block",
+              border: "1px solid var(--color-border)",
+              borderRadius: "0.5rem",
+              padding: "0.4rem 0.65rem",
+              color: "var(--color-secondary)",
+              backgroundColor: "#fff",
+              fontSize: "0.75rem",
+              fontWeight: 700,
+              textDecoration: "none",
+            }}
+          >
+            View latest Street View ↗
+          </a>
+          <p style={{ margin: "0.4rem 0 0", fontSize: "0.65rem", lineHeight: 1.35, color: "#5E5E5E" }}>
+            Latest available Google Street View; it may not show the exact property or its current condition.
+          </p>
+        </div>
+      )}
+
       {/* Legend overlay */}
       <div
         style={{
@@ -545,7 +623,7 @@ export function PropertyMap({
       </div>
 
       {/* Empty state — shown when no listings have coordinates */}
-      {listings.filter(l => l.latitude != null).length === 0 && (
+      {listings.filter(l => l.latitude != null && l.longitude != null).length === 0 && (
         <div
           style={{
             position: "absolute",

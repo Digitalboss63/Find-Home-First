@@ -82,4 +82,18 @@ describe("migration-0008 journal registration", () => {
     expect(entry).toBeDefined();
     expect(entry.tag).toBe("0008_property-type-prefs");
   });
+
+  it("has a timestamp newer than migration 0007 so Drizzle will not skip it", () => {
+    const journal = JSON.parse(fs.readFileSync(JOURNAL_PATH, "utf8"));
+    const previous = journal.entries.find((e: { idx: number }) => e.idx === 7);
+    const current = journal.entries.find((e: { idx: number }) => e.idx === 8);
+    expect(current.when).toBeGreaterThan(previous.when);
+  });
+
+  it("all migration timestamps are strictly increasing", () => {
+    const journal = JSON.parse(fs.readFileSync(JOURNAL_PATH, "utf8"));
+    for (let index = 1; index < journal.entries.length; index += 1) {
+      expect(journal.entries[index].when).toBeGreaterThan(journal.entries[index - 1].when);
+    }
+  });
 });
