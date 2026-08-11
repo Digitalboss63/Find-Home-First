@@ -521,6 +521,48 @@ export const projectStatusHistory = pgTable(
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
 
+// Project-scoped, source-backed organizations and program channels that may
+// refer qualified residents to Find Home First. Nonprofit status is not a
+// qualification signal; verified external-referral capacity is.
+export const referralPartnerCandidates = pgTable(
+  "referral_partner_candidates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    organizationName: text("organization_name").notNull(),
+    programName: text("program_name").notNull(),
+    partnerCategory: text("partner_category").notNull().default("other"),
+    contactName: text("contact_name"),
+    roleTitle: text("role_title"),
+    email: text("email"),
+    phone: text("phone"),
+    serviceArea: text("service_area"),
+    populationServed: text("population_served"),
+    referralProcess: text("referral_process"),
+    sourceUrl: text("source_url").notNull(),
+    sourceAgency: text("source_agency").notNull(),
+    sourceDate: date("source_date").notNull(),
+    verificationStatus: text("verification_status").notNull().default("official_source"),
+    referralCapacityStatus: text("referral_capacity_status").notNull().default("needs_confirmation"),
+    operatesCompetingHousing: boolean("operates_competing_housing"),
+    eligibilityStatus: text("eligibility_status").notNull().default("review_needed"),
+    eligibilityReason: text("eligibility_reason").notNull(),
+    outreachStatus: text("outreach_status").notNull().default("not_contacted"),
+    notes: text("notes"),
+    promotedContactId: uuid("promoted_contact_id").references(() => contacts.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("rpc_org_idx").on(t.organizationId),
+    index("rpc_project_idx").on(t.projectId),
+    index("rpc_eligibility_idx").on(t.eligibilityStatus),
+    uniqueIndex("rpc_project_org_program_idx").on(t.organizationId, t.projectId, t.organizationName, t.programName),
+  ]
+);
+
+// Tasks
 export const tasks = pgTable(
   "tasks",
   {
