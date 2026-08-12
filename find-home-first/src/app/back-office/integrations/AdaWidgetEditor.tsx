@@ -128,7 +128,7 @@ export default function AdaWidgetEditor({
         </label>
         <p className="text-xs mb-2" style={{ color: "var(--color-text)", opacity: 0.5 }}>
           Paste the third-party ADA widget embed code here. It will be injected
-          into the page &lt;head&gt; when enabled. The code is not executed
+          once near the end of the page body when enabled. The code is not executed
           inside this editor.
         </p>
         <textarea

@@ -73,6 +73,15 @@ function PlanIcon({ className }: { className?: string }) {
   );
 }
 
+function BackOfficeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3l8 4v5c0 5-3.4 8.3-8 9-4.6-.7-8-4-8-9V7l8-4z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
 function MenuIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true">
@@ -97,13 +106,22 @@ function XIcon({ className }: { className?: string }) {
 function NavLinks({
   isActive,
   onNavigate,
+  showBackOffice,
 }: {
   isActive: (href: string) => boolean;
   onNavigate?: () => void;
+  showBackOffice: boolean;
 }) {
+  const items = showBackOffice
+    ? [
+        ...NAV_ITEMS,
+        { href: "/back-office", label: "Back Office", icon: BackOfficeIcon },
+      ]
+    : NAV_ITEMS;
+
   return (
     <ul className="mt-3 space-y-0.5 px-2">
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+      {items.map(({ href, label, icon: Icon }) => {
         const active = isActive(href);
         return (
           <li key={href}>
@@ -131,8 +149,15 @@ function NavLinks({
 
 // ─── AppShell ─────────────────────────────────────────────────────────────────
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({
+  children,
+  showBackOffice = false,
+}: {
+  children: React.ReactNode;
+  showBackOffice?: boolean;
+}) {
   const pathname = usePathname();
+  const inBackOffice = pathname.startsWith("/back-office");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -168,6 +193,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [drawerOpen]);
 
+  // Back Office owns its platform-owner shell. Avoid nesting the operator
+  // sidebar and footer around it while preserving the shared root providers.
+  if (inBackOffice) return <>{children}</>;
+
   return (
     <div className="flex min-h-screen">
       {/* ══ Desktop sidebar ══════════════════════════════════════════ */}
@@ -195,7 +224,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <nav aria-label="Primary navigation" className="flex-1">
-          <NavLinks isActive={isActive} />
+          <NavLinks isActive={isActive} showBackOffice={showBackOffice} />
         </nav>
 
         {/* Sidebar bottom */}
@@ -301,7 +330,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           aria-label="Mobile primary navigation"
           className="flex-1 overflow-y-auto"
         >
-          <NavLinks isActive={isActive} onNavigate={closeDrawer} />
+          <NavLinks
+            isActive={isActive}
+            onNavigate={closeDrawer}
+            showBackOffice={showBackOffice}
+          />
         </nav>
         <div
           className="px-5 py-4 shrink-0 border-t"
