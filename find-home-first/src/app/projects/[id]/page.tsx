@@ -9,6 +9,7 @@ import { getProjectById, listTasksForProject, isDemoAllowed } from "@/lib/reposi
 import { requireOrganization } from "@/lib/auth";
 import { STAGES } from "@/lib/stages";
 import { canUseReferralFinder } from "@/lib/referral-partners";
+import { canUsePlacementWorkspace, placementStageTitle } from "@/lib/placement-workflow";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -54,7 +55,10 @@ function demoTaskViews(projectId: string) {
 // ── Stage Stepper ─────────────────────────────────────────────────────────────
 
 function StageStepper({ currentStage }: { currentStage: string }) {
-  const currentIdx = STAGES.findIndex((s) => s.key === currentStage);
+  const currentIdx =
+    currentStage === "complete"
+      ? STAGES.length
+      : STAGES.findIndex((s) => s.key === currentStage);
 
   return (
     <ol
@@ -96,8 +100,8 @@ function StageStepper({ currentStage }: { currentStage: string }) {
                 fontSize: "0.75rem",
                 fontWeight: 700,
                 backgroundColor: done ? "#16a34a" : active ? "var(--color-action)" : "var(--color-surface-soft)",
-                color: done || active ? "#fff" : "var(--color-text)",
-                opacity: done || active ? 1 : 0.5,
+                color: done || active ? "#fff" : "var(--color-text-muted)",
+                opacity: 1,
               }}
             >
               {done ? "✓" : i + 1}
@@ -109,8 +113,7 @@ function StageStepper({ currentStage }: { currentStage: string }) {
                   fontSize: "0.875rem",
                   fontWeight: active ? 700 : done ? 600 : 500,
                   margin: 0,
-                  color: done ? "#166534" : active ? "var(--color-primary)" : "var(--color-text)",
-                  opacity: active || done ? 1 : 0.55,
+                  color: done ? "#166534" : active ? "var(--color-primary)" : "var(--color-text-muted)",
                 }}
               >
                 {stage.label}
@@ -135,8 +138,8 @@ function StageStepper({ currentStage }: { currentStage: string }) {
               <p
                 style={{
                   fontSize: "0.8rem",
-                  color: "var(--color-text)",
-                  opacity: active || done ? 0.7 : 0.4,
+                  color: active || done ? "var(--color-text)" : "var(--color-text-muted)",
+                  opacity: active || done ? 0.78 : 1,
                   margin: "0.2rem 0 0",
                 }}
               >
@@ -345,6 +348,88 @@ export default async function ProjectPage({ params }: Props) {
             }}
           >
             Find Referral Sources →
+          </Link>
+        </div>
+      )}
+
+      {canUsePlacementWorkspace(project.currentStatus) && (
+        <div
+          style={{
+            backgroundColor: "#EFF6FF",
+            border: "1px solid #93C5FD",
+            borderRadius: "0.75rem",
+            padding: "1.25rem",
+            marginBottom: "1.25rem",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "1rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <p style={{ fontWeight: 700, color: "#1E3A8A", margin: "0 0 0.25rem", fontSize: "0.9rem" }}>
+              {placementStageTitle(project.currentStatus)}
+            </p>
+            <p style={{ fontSize: "0.8rem", color: "#1E40AF", opacity: 0.82, margin: 0 }}>
+              Continue property preparation, resident matching, and move-in from one guided workspace.
+            </p>
+          </div>
+          <Link
+            href={`/projects/${project.id}/placement`}
+            style={{
+              display: "inline-flex",
+              backgroundColor: "#1E3A8A",
+              color: "#fff",
+              textDecoration: "none",
+              padding: "0.625rem 1rem",
+              borderRadius: "0.5rem",
+              fontSize: "0.875rem",
+              fontWeight: 700,
+            }}
+          >
+            Open Placement Workspace →
+          </Link>
+        </div>
+      )}
+
+      {["contacting_owner", "application_in_progress", "property_approved"].includes(project.currentStatus) && (
+        <div
+          style={{
+            backgroundColor: "#FFF7ED",
+            border: "1px solid #FED7AA",
+            borderRadius: "0.75rem",
+            padding: "1.25rem",
+            marginBottom: "1.25rem",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "1rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <p style={{ fontWeight: 700, color: "#92400E", margin: "0 0 0.25rem", fontSize: "0.9rem" }}>
+              Secure Property
+            </p>
+            <p style={{ fontSize: "0.8rem", color: "#9A3412", opacity: 0.85, margin: 0 }}>
+              Continue owner outreach and negotiation, then record the signed agreement in the saved lead workspace.
+            </p>
+          </div>
+          <Link
+            href={`/housing-search?project=${project.id}`}
+            style={{
+              display: "inline-flex",
+              backgroundColor: "var(--color-action)",
+              color: "#fff",
+              textDecoration: "none",
+              padding: "0.625rem 1rem",
+              borderRadius: "0.5rem",
+              fontSize: "0.875rem",
+              fontWeight: 700,
+            }}
+          >
+            Continue Property Acquisition →
           </Link>
         </div>
       )}

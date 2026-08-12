@@ -3,7 +3,7 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/db/client";
-import { projects, projectStatusHistory } from "@/db/schema";
+import { projects } from "@/db/schema";
 import { requireOrganization } from "@/lib/auth";
 import type { MarketReportSnapshot } from "@/lib/export/types";
 import { getLatestReport } from "@/lib/repository-intelligence";
@@ -148,23 +148,8 @@ export async function startReferralOutreachAction(projectId: string): Promise<Ac
       .limit(1);
     const current = rows[0]?.status;
     if (!current) return { ok: false, error: "Project not found." };
-    if (current !== "preparing_property" && current !== "seeking_referrals") {
+    if (current !== "seeking_referrals") {
       return { ok: false, error: "Secure and prepare the property before starting referral outreach." };
-    }
-    if (current === "preparing_property") {
-      await db.transaction(async (tx) => {
-        await tx.update(projects).set({
-          currentStatus: "seeking_referrals",
-          nextAction: "Contact qualified referral sources and request placement candidates.",
-          updatedAt: new Date(),
-        }).where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
-        await tx.insert(projectStatusHistory).values({
-          projectId,
-          previousStatus: current,
-          newStatus: "seeking_referrals",
-          reason: "Referral outreach started from the verified partner list",
-        });
-      });
     }
     revalidatePath(`/projects/${projectId}`);
     revalidatePath(`/projects/${projectId}/referrals`);
