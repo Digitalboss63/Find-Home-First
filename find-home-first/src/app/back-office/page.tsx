@@ -44,7 +44,7 @@ export default async function BackOfficeOverviewPage() {
             {adaSetting?.enabled ? "Enabled" : "Disabled"}
           </p>
           <a
-            href="/back-office/integrations"
+            href="/back-office/site-settings/integrations/ada-widget"
             className="text-xs mt-1 block"
             style={{ color: "var(--color-secondary)" }}
           >

@@ -86,9 +86,47 @@ export default async function BackOfficeLayout({
         </div>
       </aside>
 
+      <header
+        className="lg:hidden fixed inset-x-0 top-0 z-20 px-4 py-3"
+        style={{ backgroundColor: "#1a1a2e", borderBottom: "1px solid rgba(255,255,255,0.08)" }}
+      >
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <Link href="/back-office" className="font-bold text-sm text-white">
+            Back Office
+          </Link>
+          <Link href="/" className="text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>
+            Operator Workspace →
+          </Link>
+        </div>
+        <nav aria-label="Mobile back office navigation" className="overflow-x-auto">
+          <ul className="flex gap-2 min-w-max pb-1">
+            {NAV.filter((item) => !item.indent).map(({ href, label }) => (
+              <li key={href}>
+                <Link
+                  href={href}
+                  className="block rounded-md px-3 py-1.5 text-xs font-medium"
+                  style={{ color: "rgba(255,255,255,0.78)", backgroundColor: "rgba(255,255,255,0.08)" }}
+                >
+                  {label}
+                </Link>
+              </li>
+            ))}
+            <li>
+              <Link
+                href="/back-office/site-settings/integrations/ada-widget"
+                className="block rounded-md px-3 py-1.5 text-xs font-medium"
+                style={{ color: "#fff", backgroundColor: "#8B5CF6" }}
+              >
+                ADA Widget
+              </Link>
+            </li>
+          </ul>
+        </nav>
+      </header>
+
       {/* ── Content ───────────────────────────────────────────── */}
       <main
-        className="flex-1 min-h-screen lg:ml-52 outline-none"
+        className="flex-1 min-h-screen pt-24 lg:pt-0 lg:ml-52 outline-none"
         tabIndex={-1}
         id="back-office-content"
       >

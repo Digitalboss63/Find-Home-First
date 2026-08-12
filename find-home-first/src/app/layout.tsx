@@ -6,6 +6,7 @@ import SkipLink from "@/components/SkipLink";
 import AppShell from "@/components/AppShell";
 import AdaWidgetInjector from "@/components/AdaWidgetInjector";
 import { getPlatformSetting } from "@/lib/repository";
+import { isPlatformOwner } from "@/lib/auth";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,7 +36,10 @@ export default async function RootLayout({
   // Read once per request at the root layout. Injected into <body> end via
   // AdaWidgetInjector when enabled and non-empty.
   // Only the platform owner can enable/change this via Back Office.
-  const adaSetting = await getPlatformSetting("ada_widget").catch(() => null);
+  const [adaSetting, platformOwner] = await Promise.all([
+    getPlatformSetting("ada_widget").catch(() => null),
+    isPlatformOwner(),
+  ]);
   const adaCode =
     adaSetting?.enabled && adaSetting.value ? adaSetting.value.trim() : null;
 
@@ -44,7 +48,7 @@ export default async function RootLayout({
       <body className="min-h-screen">
         <ClerkProvider>
           <SkipLink />
-          <AppShell>{children}</AppShell>
+          <AppShell showBackOffice={platformOwner}>{children}</AppShell>
           {/* ADA widget — renders only when platform owner has enabled it. */}
           {adaCode && <AdaWidgetInjector code={adaCode} />}
         </ClerkProvider>
