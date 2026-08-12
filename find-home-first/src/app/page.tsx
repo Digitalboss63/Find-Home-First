@@ -22,6 +22,7 @@ import { getStageLabelForKey } from "@/lib/stages";
 import StageJourney from "@/components/StageJourney";
 import BlockerAlert from "@/components/BlockerAlert";
 import DemoNotice from "@/components/DemoNotice";
+import { canUsePlacementWorkspace } from "@/lib/placement-workflow";
 
 export const metadata: Metadata = {
   title: "Home",
@@ -111,10 +112,11 @@ export default async function HomePage() {
   const FIND_PROPERTIES_STATUSES = new Set([
     "city_approved",
     "finding_property",
+  ]);
+  const SECURE_PROPERTY_STATUSES = new Set([
     "contacting_owner",
     "application_in_progress",
     "property_approved",
-    "preparing_property",
   ]);
 
   type PrimaryAction =
@@ -132,6 +134,16 @@ export default async function HomePage() {
     }
     if (FIND_PROPERTIES_STATUSES.has(status)) {
       return { label: "Find Properties", href: `/housing-search?project=${primaryProject.id}`, isPrimary: true };
+    }
+    if (SECURE_PROPERTY_STATUSES.has(status)) {
+      return { label: "Secure Property", href: `/housing-search?project=${primaryProject.id}`, isPrimary: true };
+    }
+    if (canUsePlacementWorkspace(status)) {
+      return {
+        label: status === "moved_in" ? "View Completed Placement" : "Continue Placement",
+        href: `/projects/${primaryProject.id}/placement`,
+        isPrimary: true,
+      };
     }
     // Other active statuses — use project's nextAction if available, or open project
     const nextActionLabel = (primaryProject as { nextAction?: string | null }).nextAction

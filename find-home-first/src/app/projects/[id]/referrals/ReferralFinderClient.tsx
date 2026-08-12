@@ -2,12 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { ReferralPartnerView } from "@/lib/repository-referrals";
 import {
   addQualifiedPartnerToContactsAction,
   generateReferralPartnersAction,
   saveReferralPartnerAction,
-  startReferralOutreachAction,
 } from "./actions";
 
 type Tab = "recommended" | "review" | "excluded" | "all";
@@ -163,9 +163,16 @@ export default function ReferralFinderClient({ projectId, candidates, projectSta
       <button type="button" onClick={() => run(() => generateReferralPartnersAction(projectId))} disabled={pending} style={{ background: "var(--color-action)", color: "#fff", border: 0, borderRadius: "0.5rem", padding: "0.65rem 1rem", fontWeight: 700 }}>
         {pending ? "Working…" : candidates.length ? "Update from City Report" : "Build Referral List"}
       </button>
-      {(projectStatus === "preparing_property" || projectStatus === "seeking_referrals") && candidates.length > 0 && <button type="button" onClick={() => run(() => startReferralOutreachAction(projectId))} disabled={pending}>
-        {projectStatus === "seeking_referrals" ? "✓ Referral outreach active" : "Start referral outreach"}
-      </button>}
+      {projectStatus === "preparing_property" && candidates.length > 0 && (
+        <Link href={`/projects/${projectId}/placement`} style={{ border: "1px solid #86EFAC", borderRadius: "0.5rem", padding: "0.65rem 1rem", fontWeight: 700, color: "#166534", textDecoration: "none" }}>
+          Complete Property Preparation →
+        </Link>
+      )}
+      {projectStatus === "seeking_referrals" && candidates.length > 0 && (
+        <span role="status" style={{ border: "1px solid #86EFAC", borderRadius: "0.5rem", padding: "0.65rem 1rem", fontWeight: 700, color: "#166534", backgroundColor: "#F0FDF4" }}>
+          ✓ Referral outreach active
+        </span>
+      )}
     </div>
     {message && <p role="status" style={{ fontSize: "0.84rem", fontWeight: 700 }}>{message}</p>}
 

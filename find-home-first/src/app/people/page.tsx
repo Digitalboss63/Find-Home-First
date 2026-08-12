@@ -23,6 +23,10 @@ import {
 import type { ContactView, ResidentView } from "@/lib/repository";
 import { requireOrganization } from "@/lib/auth";
 import { canUseReferralFinder } from "@/lib/referral-partners";
+import {
+  canUsePlacementWorkspace,
+  placementStageTitle,
+} from "@/lib/placement-workflow";
 import DemoNotice from "@/components/DemoNotice";
 
 export const metadata: Metadata = {
@@ -167,6 +171,9 @@ export default async function PeoplePage() {
   const finderProjects = usingDemo
     ? []
     : dbProjects!.filter((project) => canUseReferralFinder(project.currentStatus));
+  const placementProjects = usingDemo
+    ? []
+    : dbProjects!.filter((project) => canUsePlacementWorkspace(project.currentStatus));
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 lg:px-10">
@@ -224,6 +231,46 @@ export default async function PeoplePage() {
           </ul>
         )}
       </section>
+
+      {placementProjects.length > 0 && (
+        <section
+          aria-labelledby="placement-projects-heading"
+          className="mb-10 rounded-xl px-5 py-5"
+          style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}
+        >
+          <h2 id="placement-projects-heading" className="font-bold text-base" style={{ color: "#1E3A8A" }}>
+            Resident Matching &amp; Move-In
+          </h2>
+          <p className="text-sm mt-1 mb-4 leading-relaxed" style={{ color: "#1E40AF", opacity: 0.82 }}>
+            Continue the active placement project where its saved property, resident candidates, and move-in checklist stay together.
+          </p>
+          <ul className="grid gap-3">
+            {placementProjects.map((project) => (
+              <li
+                key={project.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg px-4 py-3"
+                style={{ backgroundColor: "#fff", border: "1px solid #BFDBFE" }}
+              >
+                <div>
+                  <p className="font-semibold text-sm" style={{ color: "var(--color-primary)" }}>
+                    {project.name}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
+                    {placementStageTitle(project.currentStatus)} · {project.community}
+                  </p>
+                </div>
+                <Link
+                  href={`/projects/${project.id}/placement`}
+                  className="inline-flex rounded-lg px-4 py-2 text-sm font-bold no-underline"
+                  style={{ backgroundColor: "#1E3A8A", color: "#fff" }}
+                >
+                  Open Placement Workspace →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* ── Referral Contacts ─────────────────────────────────────── */}
       <section aria-labelledby="referral-heading" className="mb-12">

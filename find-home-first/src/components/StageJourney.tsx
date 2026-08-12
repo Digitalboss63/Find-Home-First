@@ -15,7 +15,10 @@ interface Props {
 }
 
 export default function StageJourney({ currentStage, compact = false }: Props) {
-  const currentIndex = STAGES.findIndex((s) => s.key === currentStage);
+  const currentIndex =
+    currentStage === "complete"
+      ? STAGES.length
+      : STAGES.findIndex((s) => s.key === currentStage);
 
   return (
     <div aria-label="Placement journey stages" className="w-full">
@@ -47,7 +50,11 @@ export default function StageJourney({ currentStage, compact = false }: Props) {
             : active
             ? "var(--color-action)"
             : "var(--color-border)";
-          const circleColor = done || active ? "#fff" : "var(--color-border)";
+          // Upcoming steps must remain readable. The border token is intentionally
+          // light and only suitable for decoration; using it for text produced a
+          // contrast ratio of roughly 1.3:1 on the journey panel.
+          const circleColor =
+            done || active ? "#fff" : "var(--color-text-muted)";
 
           return (
             <div
@@ -106,7 +113,9 @@ export default function StageJourney({ currentStage, compact = false }: Props) {
                   className="mt-2 text-[11px] text-center leading-tight px-0.5 font-medium"
                   style={{
                     color:
-                      done || active ? "var(--color-text)" : "var(--color-border)",
+                      done || active
+                        ? "var(--color-text)"
+                        : "var(--color-text-muted)",
                   }}
                 >
                   {stage.label}
@@ -130,10 +139,16 @@ export default function StageJourney({ currentStage, compact = false }: Props) {
           className="mt-3 text-sm font-medium text-center"
           style={{ color: "var(--color-text)" }}
         >
-          Current stage:{" "}
-          <span style={{ color: "var(--color-action)" }}>
-            {STAGES[currentIndex]?.label}
-          </span>
+          {currentStage === "complete" ? (
+            <span style={{ color: "#166534" }}>✓ Placement complete</span>
+          ) : (
+            <>
+              Current stage:{" "}
+              <span style={{ color: "var(--color-action)" }}>
+                {STAGES[currentIndex]?.label}
+              </span>
+            </>
+          )}
         </p>
       )}
     </div>

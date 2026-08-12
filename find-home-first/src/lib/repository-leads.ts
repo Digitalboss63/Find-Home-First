@@ -677,7 +677,7 @@ export interface SecurePropertyInput {
   agreementReference: string | null;
 }
 
-const PREPARATION_TASKS = [
+export const PREPARATION_TASKS = [
   "Verify agreement and insurance documentation",
   "Complete property condition and move-in inspection",
   "Confirm utilities and service activation",
