@@ -26,6 +26,25 @@ export const REFERRAL_FINDER_AVAILABLE_STATUSES = new Set([
 export function canUseReferralFinder(currentStatus: string): boolean {
   return REFERRAL_FINDER_AVAILABLE_STATUSES.has(currentStatus);
 }
+
+/**
+ * Opens a focused public web search without calling a paid API or attempting
+ * to scrape a person's name. The operator must confirm the result against an
+ * official organization page before saving it.
+ */
+export function buildCaseworkerSearchUrl(
+  organizationName: string,
+  serviceArea?: string | null
+): string {
+  const query = [
+    `"${organizationName.trim()}"`,
+    serviceArea?.trim(),
+    '(caseworker OR "case manager" OR "intake coordinator" OR "referral coordinator")',
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+}
 export type VerificationStatus = "official_source" | "needs_verification" | "confirmed";
 
 export interface ReferralPartnerSeed {

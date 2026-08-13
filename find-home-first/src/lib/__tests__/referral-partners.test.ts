@@ -2,9 +2,12 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { MarketReportSnapshot, ProgramOpportunity } from "@/lib/export/types";
 import {
   buildReferralPartnerSeeds,
+  buildCaseworkerSearchUrl,
   canUseReferralFinder,
   determinePartnerEligibility,
 } from "@/lib/referral-partners";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 function program(overrides: Partial<ProgramOpportunity> = {}): ProgramOpportunity {
   return {
@@ -115,6 +118,22 @@ describe("determinePartnerEligibility", () => {
   });
 });
 
+describe("assisted caseworker search", () => {
+  it("builds a focused Google search from organization and city", () => {
+    const url = new URL(buildCaseworkerSearchUrl("Atlanta VA Medical Center", "Atlanta, GA"));
+    expect(url.origin).toBe("https://www.google.com");
+    expect(url.searchParams.get("q")).toContain("Atlanta VA Medical Center");
+    expect(url.searchParams.get("q")).toContain("Atlanta, GA");
+    expect(url.searchParams.get("q")).toContain("intake coordinator");
+  });
+
+  it("does not call or require a paid search API", () => {
+    const source = buildCaseworkerSearchUrl.toString();
+    expect(source).not.toContain("fetch(");
+    expect(source).not.toContain("API_KEY");
+  });
+});
+
 describe("referral finder availability", () => {
   it.each([
     "city_approved",
@@ -142,7 +161,7 @@ describe("referral finder availability", () => {
 
 const mocks = vi.hoisted(() => ({
   requireOrganization: vi.fn(), projectBelongsToOrg: vi.fn(), getDb: vi.fn(), getLatestReport: vi.fn(),
-  upsertSeeds: vi.fn(), listPartners: vi.fn(), updatePartner: vi.fn(), promote: vi.fn(),
+  upsertSeeds: vi.fn(), listPartners: vi.fn(), updatePartner: vi.fn(), promote: vi.fn(), createManual: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/auth", () => ({ requireOrganization: mocks.requireOrganization }));
@@ -150,6 +169,7 @@ vi.mock("@/lib/repository", () => ({ projectBelongsToOrg: mocks.projectBelongsTo
 vi.mock("@/db/client", () => ({ getDb: mocks.getDb }));
 vi.mock("@/lib/repository-intelligence", () => ({ getLatestReport: mocks.getLatestReport }));
 vi.mock("@/lib/repository-referrals", () => ({
+  createManualReferralPartner: mocks.createManual,
   upsertReferralPartnerSeeds: mocks.upsertSeeds,
   listReferralPartners: mocks.listPartners,
   updateReferralPartner: mocks.updatePartner,
@@ -164,6 +184,7 @@ describe("referral finder actions", () => {
     mocks.projectBelongsToOrg.mockResolvedValue(true);
     mocks.getDb.mockReturnValue({});
     mocks.upsertSeeds.mockResolvedValue(2);
+    mocks.createManual.mockResolvedValue("created");
   });
 
   it("denies a cross-organization project before reading or writing report data", async () => {
@@ -196,5 +217,78 @@ describe("referral finder actions", () => {
     const result = await addQualifiedPartnerToContactsAction("project-1", "candidate-1");
     expect(result.ok).toBe(false);
     expect(result).toEqual({ ok: false, error: expect.stringContaining("qualified") });
+  });
+
+  it("creates a manual contact in Needs verification using the server organization", async () => {
+    const { addManualCaseworkerAction } = await import("@/app/projects/[id]/referrals/actions");
+    const result = await addManualCaseworkerAction({
+      projectId: "project-1",
+      organizationName: "Atlanta VA Medical Center",
+      programName: "HUD-VASH",
+      contactName: "Jordan Example",
+      roleTitle: "Case Manager",
+      email: "jordan@example.org",
+      phone: "",
+      serviceArea: "Atlanta, GA",
+      sourceUrl: "https://example.org/staff",
+      notes: "Verified on staff page",
+    });
+    expect(result.ok).toBe(true);
+    expect(mocks.createManual).toHaveBeenCalledWith(
+      expect.anything(),
+      "org-server",
+      "project-1",
+      expect.objectContaining({
+        organizationName: "Atlanta VA Medical Center",
+        contactName: "Jordan Example",
+        sourceUrl: "https://example.org/staff",
+      })
+    );
+  });
+
+  it("rejects a manual contact without phone or email before writing", async () => {
+    const { addManualCaseworkerAction } = await import("@/app/projects/[id]/referrals/actions");
+    const result = await addManualCaseworkerAction({
+      projectId: "project-1", organizationName: "Agency", contactName: "Person",
+      serviceArea: "Atlanta, GA", sourceUrl: "https://example.org/staff",
+    });
+    expect(result.ok).toBe(false);
+    expect(mocks.createManual).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-web verification source before writing", async () => {
+    const { addManualCaseworkerAction } = await import("@/app/projects/[id]/referrals/actions");
+    const result = await addManualCaseworkerAction({
+      projectId: "project-1", organizationName: "Agency", contactName: "Person",
+      email: "person@example.org", serviceArea: "Atlanta, GA", sourceUrl: "javascript:alert(1)",
+    });
+    expect(result.ok).toBe(false);
+    expect(mocks.createManual).not.toHaveBeenCalled();
+  });
+
+  it("denies cross-organization manual entry", async () => {
+    mocks.projectBelongsToOrg.mockResolvedValue(false);
+    const { addManualCaseworkerAction } = await import("@/app/projects/[id]/referrals/actions");
+    const result = await addManualCaseworkerAction({
+      projectId: "project-other", organizationName: "Agency", contactName: "Person",
+      email: "person@example.org", serviceArea: "Atlanta, GA", sourceUrl: "https://example.org/staff",
+    });
+    expect(result.ok).toBe(false);
+    expect(mocks.createManual).not.toHaveBeenCalled();
+  });
+});
+
+describe("manual caseworker UI", () => {
+  const source = readFileSync(join(process.cwd(), "src/app/projects/[id]/referrals/ReferralFinderClient.tsx"), "utf8");
+
+  it("uses an isolated manual-entry form with an explicit submit button", () => {
+    expect(source).toContain("<form onSubmit={submit}");
+    expect(source).toContain('type="submit"');
+    expect(source).toContain("Add to verification list");
+  });
+
+  it("labels assisted web search separately from verification", () => {
+    expect(source).toContain("Find contact on Google");
+    expect(source).toContain("Needs verification");
   });
 });
