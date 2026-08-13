@@ -30,6 +30,64 @@ export interface ReferralPartnerView {
   promotedContactId: string | null;
   updatedAt: Date;
 }
+
+export interface ManualReferralPartnerInput {
+  organizationName: string;
+  programName: string;
+  contactName: string;
+  roleTitle: string | null;
+  email: string | null;
+  phone: string | null;
+  serviceArea: string;
+  sourceUrl: string;
+  notes: string | null;
+  sourceDate: string;
+}
+
+export async function createManualReferralPartner(
+  db: DrizzleDb,
+  organizationId: string,
+  projectId: string,
+  input: ManualReferralPartnerInput
+): Promise<"created" | "duplicate"> {
+  const rows = await db
+    .insert(referralPartnerCandidates)
+    .values({
+      organizationId,
+      projectId,
+      organizationName: input.organizationName,
+      programName: input.programName,
+      partnerCategory: "manual_caseworker",
+      contactName: input.contactName,
+      roleTitle: input.roleTitle,
+      email: input.email,
+      phone: input.phone,
+      serviceArea: input.serviceArea,
+      populationServed: "Confirm with contact",
+      referralProcess: "Operator-entered contact; confirm the current external-referral and intake process.",
+      sourceUrl: input.sourceUrl,
+      sourceAgency: input.organizationName,
+      sourceDate: input.sourceDate,
+      verificationStatus: "needs_verification",
+      referralCapacityStatus: "needs_confirmation",
+      operatesCompetingHousing: null,
+      eligibilityStatus: "review_needed",
+      eligibilityReason: "Manually entered contact. Confirm the person's current role and external-referral capacity before relying on this source.",
+      outreachStatus: "not_contacted",
+      notes: input.notes,
+    })
+    .onConflictDoNothing({
+      target: [
+        referralPartnerCandidates.organizationId,
+        referralPartnerCandidates.projectId,
+        referralPartnerCandidates.organizationName,
+        referralPartnerCandidates.programName,
+      ],
+    })
+    .returning({ id: referralPartnerCandidates.id });
+  return rows.length === 1 ? "created" : "duplicate";
+}
+
 export async function listReferralPartners(
   db: DrizzleDb,
   organizationId: string,

@@ -26,6 +26,11 @@ export default async function ReferralFinderPage({ params }: { params: Promise<{
       <h1 style={{ color: "var(--color-primary)", margin: "0.25rem 0", fontSize: "1.6rem" }}>Caseworker &amp; Referral Partner Finder</h1>
       <p style={{ margin: 0, fontSize: "0.9rem", opacity: 0.7 }}>Find and verify the teams that can refer qualified residents into this project&apos;s housing.</p>
     </header>
-    <ReferralFinderClient projectId={id} candidates={candidates} projectStatus={project.currentStatus} />
+    <ReferralFinderClient
+      projectId={id}
+      candidates={candidates}
+      projectStatus={project.currentStatus}
+      community={project.community}
+    />
   </div>;
 }

@@ -8,6 +8,7 @@ import { requireOrganization } from "@/lib/auth";
 import type { MarketReportSnapshot } from "@/lib/export/types";
 import { getLatestReport } from "@/lib/repository-intelligence";
 import {
+  createManualReferralPartner,
   listReferralPartners,
   promoteReferralPartnerToContact,
   updateReferralPartner,
@@ -26,6 +27,7 @@ type ActionResult = { ok: true; message: string } | { ok: false; error: string }
 const VERIFICATION = new Set<VerificationStatus>(["official_source", "needs_verification", "confirmed"]);
 const CAPACITY = new Set<ReferralCapacity>(["confirmed_external", "needs_confirmation", "no_external_referrals"]);
 const OUTREACH = new Set(["not_contacted", "contacted", "confirmed", "not_a_fit"]);
+const SIMPLE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function clean(value: unknown, max = 500): string | null {
   if (typeof value !== "string") return null;
@@ -39,6 +41,69 @@ async function authorizeProject(projectId: string) {
   if (!db) throw new Error("Database unavailable");
   if (!(await projectBelongsToOrg(projectId, ctx.organizationId))) throw new Error("Project not found");
   return { ...ctx, db };
+}
+
+export async function addManualCaseworkerAction(input: {
+  projectId: string;
+  organizationName: string;
+  programName?: string;
+  contactName: string;
+  roleTitle?: string;
+  email?: string;
+  phone?: string;
+  serviceArea: string;
+  sourceUrl: string;
+  notes?: string;
+}): Promise<ActionResult> {
+  try {
+    const organizationName = clean(input.organizationName, 160);
+    const contactName = clean(input.contactName, 120);
+    const programName = clean(input.programName, 160) ?? "Referral / Intake Team";
+    const roleTitle = clean(input.roleTitle, 120);
+    const email = clean(input.email, 240);
+    const phone = clean(input.phone, 60);
+    const serviceArea = clean(input.serviceArea, 160);
+    const notes = clean(input.notes, 2000);
+
+    if (!organizationName || !contactName || !serviceArea) {
+      return { ok: false, error: "Enter the organization, contact name, and service area." };
+    }
+    if (!email && !phone) {
+      return { ok: false, error: "Enter an email address or phone number for this contact." };
+    }
+    if (email && !SIMPLE_EMAIL.test(email)) {
+      return { ok: false, error: "Enter a valid email address." };
+    }
+
+    let sourceUrl: string;
+    try {
+      const parsed = new URL(input.sourceUrl.trim());
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("protocol");
+      sourceUrl = parsed.toString();
+    } catch {
+      return { ok: false, error: "Enter the official organization or staff-page URL used to verify this contact." };
+    }
+
+    const { db, organizationId } = await authorizeProject(input.projectId);
+    const outcome = await createManualReferralPartner(db, organizationId, input.projectId, {
+      organizationName,
+      programName,
+      contactName,
+      roleTitle,
+      email,
+      phone,
+      serviceArea,
+      sourceUrl,
+      notes,
+      sourceDate: new Date().toISOString().slice(0, 10),
+    });
+    revalidatePath(`/projects/${input.projectId}/referrals`);
+    return outcome === "created"
+      ? { ok: true, message: "Caseworker added to Needs verification." }
+      : { ok: false, error: "That organization and program are already in this project's list. Update the existing card instead." };
+  } catch {
+    return { ok: false, error: "The caseworker contact could not be added." };
+  }
 }
 
 export async function generateReferralPartnersAction(projectId: string): Promise<ActionResult> {

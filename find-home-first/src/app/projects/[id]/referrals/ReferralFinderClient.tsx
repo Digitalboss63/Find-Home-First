@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ReferralPartnerView } from "@/lib/repository-referrals";
 import {
+  addManualCaseworkerAction,
   addQualifiedPartnerToContactsAction,
   generateReferralPartnersAction,
   saveReferralPartnerAction,
 } from "./actions";
+import { buildCaseworkerSearchUrl } from "@/lib/referral-partners";
 
 type Tab = "recommended" | "review" | "excluded" | "all";
 
@@ -22,6 +24,82 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return <label style={{ display: "grid", gap: "0.3rem", fontSize: "0.78rem", fontWeight: 600, color: "var(--color-primary)" }}>
     {label}{children}
   </label>;
+}
+
+function ManualCaseworkerForm({
+  projectId,
+  community,
+  onAdded,
+}: {
+  projectId: string;
+  community: string;
+  onAdded: () => void;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  const [organizationName, setOrganizationName] = useState("");
+  const [programName, setProgramName] = useState("");
+  const [contactName, setContactName] = useState("");
+  const [roleTitle, setRoleTitle] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [notes, setNotes] = useState("");
+
+  function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    startTransition(async () => {
+      const result = await addManualCaseworkerAction({
+        projectId, organizationName, programName, contactName, roleTitle,
+        email, phone, serviceArea: community, sourceUrl, notes,
+      });
+      setMessage(result.ok ? result.message : result.error);
+      if (result.ok) {
+        setOpen(false);
+        setOrganizationName(""); setProgramName(""); setContactName("");
+        setRoleTitle(""); setEmail(""); setPhone(""); setSourceUrl(""); setNotes("");
+        onAdded();
+        router.refresh();
+      }
+    });
+  }
+
+  return <section style={{ border: "1px solid #C7D2FE", borderRadius: "0.75rem", padding: "1rem", marginBottom: "1rem", background: "#F8FAFF" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+      <div>
+        <h2 style={{ fontSize: "1rem", color: "var(--color-primary)", margin: 0 }}>Add a caseworker you already found</h2>
+        <p style={{ margin: "0.25rem 0 0", fontSize: "0.8rem", opacity: 0.72 }}>The contact starts in Needs verification and cannot become qualified until you confirm outside referrals.</p>
+      </div>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)} style={{ fontWeight: 700 }}>
+        {open ? "Close" : "+ Add caseworker manually"}
+      </button>
+    </div>
+
+    {open && <form onSubmit={submit} style={{ borderTop: "1px solid #C7D2FE", marginTop: "0.9rem", paddingTop: "0.9rem", display: "grid", gap: "0.75rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(13rem, 1fr))", gap: "0.7rem" }}>
+        <Field label="Organization *"><input required value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} placeholder="VA medical center, agency, program…" /></Field>
+        <Field label="Program / team"><input value={programName} onChange={(e) => setProgramName(e.target.value)} placeholder="HUD-VASH, intake team…" /></Field>
+        <Field label="Caseworker / intake contact *"><input required value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Verified full name" /></Field>
+        <Field label="Role"><input value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} placeholder="Case manager, intake coordinator…" /></Field>
+        <Field label="Email"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+        <Field label="Phone"><input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+      </div>
+      <Field label="Official organization or staff-page URL *"><input required type="url" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} placeholder="https://official-organization.org/staff" /></Field>
+      <Field label="Notes"><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="How the name was verified, intake details, follow-up…" /></Field>
+      <div style={{ display: "flex", gap: "0.7rem", alignItems: "center", flexWrap: "wrap" }}>
+        <button type="submit" disabled={pending} style={{ background: "var(--color-action)", color: "#fff", border: 0, borderRadius: "0.45rem", padding: "0.6rem 0.95rem", fontWeight: 700 }}>
+          {pending ? "Adding…" : "Add to verification list"}
+        </button>
+        {organizationName.trim() && <a href={buildCaseworkerSearchUrl(organizationName, community)} target="_blank" rel="noreferrer" style={{ color: "var(--color-action)", fontSize: "0.82rem", fontWeight: 700 }}>
+          Find contact on Google ↗
+        </a>}
+      </div>
+    </form>}
+    {message && <p role="status" style={{ fontSize: "0.8rem", fontWeight: 700, margin: "0.7rem 0 0" }}>{message}</p>}
+  </section>;
 }
 function CandidateCard({ projectId, candidate }: { projectId: string; candidate: ReferralPartnerView }) {
   const router = useRouter();
@@ -87,7 +165,7 @@ function CandidateCard({ projectId, candidate }: { projectId: string; candidate:
     <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))", gap: "0.55rem 1rem", fontSize: "0.8rem", margin: "0 0 0.8rem" }}>
       <div><dt style={{ fontWeight: 700 }}>Population</dt><dd style={{ margin: "0.15rem 0 0" }}>{candidate.populationServed ?? "Confirm locally"}</dd></div>
       <div><dt style={{ fontWeight: 700 }}>Referral process</dt><dd style={{ margin: "0.15rem 0 0" }}>{candidate.referralProcess ?? "Confirm locally"}</dd></div>
-      <div><dt style={{ fontWeight: 700 }}>Contact</dt><dd style={{ margin: "0.15rem 0 0" }}>{candidate.contactName || "No public individual listed — contact program intake"}</dd></div>
+      <div><dt style={{ fontWeight: 700 }}>Contact</dt><dd style={{ margin: "0.15rem 0 0" }}>{candidate.contactName || "No public individual listed — contact program intake"}<br /><a href={buildCaseworkerSearchUrl(candidate.organizationName, candidate.serviceArea)} target="_blank" rel="noreferrer" style={{ color: "var(--color-action)", fontSize: "0.75rem" }}>Find verified person ↗</a></dd></div>
       <div><dt style={{ fontWeight: 700 }}>Outreach</dt><dd style={{ margin: "0.15rem 0 0", textTransform: "capitalize" }}>{candidate.outreachStatus.replaceAll("_", " ")}</dd></div>
     </dl>
 
@@ -123,7 +201,7 @@ function CandidateCard({ projectId, candidate }: { projectId: string; candidate:
   </article>;
 }
 
-export default function ReferralFinderClient({ projectId, candidates, projectStatus }: { projectId: string; candidates: ReferralPartnerView[]; projectStatus: string }) {
+export default function ReferralFinderClient({ projectId, candidates, projectStatus, community }: { projectId: string; candidates: ReferralPartnerView[]; projectStatus: string; community: string }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("recommended");
   const [pending, startTransition] = useTransition();
@@ -175,6 +253,8 @@ export default function ReferralFinderClient({ projectId, candidates, projectSta
       )}
     </div>
     {message && <p role="status" style={{ fontSize: "0.84rem", fontWeight: 700 }}>{message}</p>}
+
+    <ManualCaseworkerForm projectId={projectId} community={community} onAdded={() => setTab("review")} />
 
     {candidates.length > 0 && <nav aria-label="Referral list filters" style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.7rem", marginBottom: "1rem" }}>
       {(["recommended", "review", "excluded", "all"] as Tab[]).map((item) => <button key={item} type="button" aria-pressed={tab === item} onClick={() => setTab(item)} style={{ borderRadius: "999px", padding: "0.45rem 0.75rem", fontWeight: 700, background: tab === item ? "var(--color-primary)" : "#fff", color: tab === item ? "#fff" : "var(--color-primary)" }}>
