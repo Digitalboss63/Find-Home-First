@@ -216,6 +216,21 @@ export default async function HomePage() {
                 <span aria-hidden="true">→</span>
               </Link>
             )}
+
+            {/* Always keep a clear way to begin another placement. */}
+            {primaryProject && (
+              <Link
+                href="/projects/new"
+                className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold"
+                style={{
+                  backgroundColor: "white",
+                  border: "1px solid var(--color-primary)",
+                  color: "var(--color-primary)",
+                }}
+              >
+                + Start New Placement
+              </Link>
+            )}
           </div>
         </div>
       </section>
@@ -258,7 +273,7 @@ export default async function HomePage() {
 
       {/* ── Active projects ─────────────────────────────────────────── */}
       <section aria-labelledby="active-projects-heading" className="mb-10">
-        <div className="flex items-baseline justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2
             id="active-projects-heading"
             className="text-base font-semibold"
@@ -266,13 +281,22 @@ export default async function HomePage() {
           >
             Active Projects
           </h2>
-          <Link
-            href="/projects"
-            className="text-xs font-medium"
-            style={{ color: "var(--color-secondary)" }}
-          >
-            View all projects →
-          </Link>
+          <div className="flex flex-wrap items-center gap-4">
+            <Link
+              href="/projects/new"
+              className="text-xs font-semibold"
+              style={{ color: "var(--color-action)" }}
+            >
+              + New Placement
+            </Link>
+            <Link
+              href="/projects"
+              className="text-xs font-medium"
+              style={{ color: "var(--color-secondary)" }}
+            >
+              View all projects →
+            </Link>
+          </div>
         </div>
 
         {activeProjects.length === 0 ? (
