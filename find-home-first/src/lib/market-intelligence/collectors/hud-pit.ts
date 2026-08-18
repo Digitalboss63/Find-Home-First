@@ -1,10 +1,9 @@
 /**
  * HUD Point-in-Time (PIT) count collector.
  *
- * Uses HUD Exchange CSV data or the HUD User API.
- * Both are public; HUD_TOKEN is optional — enables higher rate limits.
- *
- * Dependency-injected fetch allows deterministic unit tests.
+ * Uses published HUD Exchange CoC reports. HUD User does not expose a PIT
+ * endpoint, so this collector must never spend a request on a fabricated API
+ * route. Recognized CoCs are backed by their official published report URL.
  */
 import type { CollectorResult, PitData, GeoContext } from "../types";
 
@@ -14,9 +13,13 @@ export interface HudPitCollectorConfig {
   hudToken?: string;
 }
 
-// 2024 PIT known data for Atlanta CoC (GA-500) — used when API is unavailable
-// This is public HUD data, not a fixture. Used as fallback only.
-const KNOWN_2024_PIT: Record<string, Partial<PitData>> = {
+interface PublishedPitData extends Partial<PitData> {
+  sourceUrl: string;
+}
+
+// Published HUD CoC reports used when no machine-readable PIT endpoint exists.
+// These are authoritative source-backed fallbacks, not demo fixtures.
+const KNOWN_PIT: Record<string, PublishedPitData> = {
   "GA-500": {
     totalHomeless: 2867,
     unsheltered: 1040,
@@ -27,6 +30,19 @@ const KNOWN_2024_PIT: Record<string, Partial<PitData>> = {
     blackPct: 0.822,
     reportingYear: 2024,
     veterans2026Estimate: 241,
+    sourceUrl: "https://files.hudexchange.info/reports/published/CoC_PopSub_CoC_GA-500-2024_GA_2024.pdf",
+  },
+  "PA-500": {
+    totalHomeless: 5516,
+    unsheltered: 1178,
+    adultsWithoutChildren: 4219,
+    veterans: 284,
+    chronicHomeless: 1612,
+    blackHomeless: 3478,
+    blackPct: 3478 / 5516,
+    reportingYear: 2025,
+    veterans2026Estimate: null,
+    sourceUrl: "https://files.hudexchange.info/reports/published/CoC_PopSub_CoC_PA-500-2025_PA_2025.pdf",
   },
 };
 
@@ -54,57 +70,17 @@ export async function collectHudPit(
   geo: GeoContext,
   config: HudPitCollectorConfig = {}
 ): Promise<CollectorResult<PitData>> {
-  const { fetchFn = fetch, timeoutMs = 10000, hudToken } = config;
+  // Keep the config parameter for API compatibility with the job runner. PIT
+  // data itself comes from published CoC reports, not the HUD User API.
+  void config;
   const now = new Date().toISOString();
 
   if (!geo.cocId) {
     return notVerified(geo, "CoC ID not known for this geography");
   }
 
-  // Try HUD API first if token available
-  if (hudToken) {
-    try {
-      const url = `https://www.huduser.gov/hudapi/public/pit?year=2024&entity_id=${encodeURIComponent(geo.cocId)}`;
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        const res = await fetchFn(url, {
-          headers: { Authorization: `Bearer ${hudToken}` },
-          signal: controller.signal,
-        });
-        clearTimeout(timer);
-        if (res.ok) {
-          const json = await res.json() as unknown;
-          const data = parsePitApiResponse(json, geo);
-          if (data) {
-            return {
-              data,
-              status: "ok",
-              source: {
-                sourceKey: "hud_pit",
-                sourceAgency: "U.S. Department of Housing and Urban Development",
-                datasetName: "Point-in-Time Count and Housing Inventory Count",
-                directUrl: "https://www.hudexchange.info/resource/3031/pit-and-hic-data-since-2007/",
-                reportingPeriod: "2024 PIT",
-                geography: `${geo.cocId} ${geo.cocName ?? ""}`.trim(),
-                retrievedAt: now,
-                retrievalMethod: "api",
-                confidence: "high",
-                isDerived: false,
-              },
-            };
-          }
-        }
-      } finally {
-        clearTimeout(timer);
-      }
-    } catch {
-      // Fall through to static fallback
-    }
-  }
-
-  // Use known public data for recognized CoCs
-  const known = KNOWN_2024_PIT[geo.cocId];
+  // Use source-backed published data for recognized CoCs.
+  const known = KNOWN_PIT[geo.cocId];
   if (known) {
     const data: PitData = {
       totalHomeless: known.totalHomeless ?? null,
@@ -124,11 +100,11 @@ export async function collectHudPit(
         sourceKey: "hud_pit",
         sourceAgency: "U.S. Department of Housing and Urban Development",
         datasetName: "Point-in-Time Count and Housing Inventory Count",
-        directUrl: "https://www.hudexchange.info/resource/3031/pit-and-hic-data-since-2007/",
-        reportingPeriod: "2024 PIT",
+        directUrl: known.sourceUrl,
+        reportingPeriod: `${data.reportingYear} PIT`,
         geography: `${geo.cocId} ${geo.cocName ?? ""}`.trim(),
         retrievedAt: now,
-        retrievalMethod: "csv_parse",
+        retrievalMethod: "static",
         confidence: "high",
         isDerived: false,
       },
@@ -136,24 +112,4 @@ export async function collectHudPit(
   }
 
   return notVerified(geo, `No PIT data available for CoC ${geo.cocId}`);
-}
-
-function parsePitApiResponse(json: unknown, geo: GeoContext): PitData | null {
-  if (!json || typeof json !== "object") return null;
-  // HUD API response shape varies — attempt best-effort parse
-  const obj = json as Record<string, unknown>;
-  const total = typeof obj["total_homeless"] === "number" ? obj["total_homeless"] : null;
-  if (total === null) return null;
-  void geo;
-  return {
-    totalHomeless: total,
-    unsheltered: typeof obj["unsheltered_homeless"] === "number" ? obj["unsheltered_homeless"] : null,
-    adultsWithoutChildren: typeof obj["total_homeless_adults_without_children"] === "number" ? obj["total_homeless_adults_without_children"] : null,
-    veterans: typeof obj["homeless_veterans"] === "number" ? obj["homeless_veterans"] : null,
-    chronicHomeless: typeof obj["chronically_homeless"] === "number" ? obj["chronically_homeless"] : null,
-    blackHomeless: null,
-    blackPct: null,
-    reportingYear: 2024,
-    veterans2026Estimate: null,
-  };
 }

@@ -95,6 +95,19 @@ const COC_PROGRAMS: Record<string, Program[]> = {
       reportingDate: new Date().toISOString().slice(0, 7),
     },
   ],
+  "PA-500": [
+    {
+      programName: "Philadelphia CoC Rapid Rehousing",
+      fitRank: "Possible",
+      localAdminOrg: "City of Philadelphia Office of Homeless Services",
+      sharedHousingCompatibility: "Not Verified — confirm with Philadelphia program intake",
+      referralProcess: "Coordinated Entry and Assessment-Based Housing Referral System (CEA-BHRS)",
+      currentAvailability: "Not Verified — confirm current referral capacity",
+      unresolvedRestrictions: "Payment standard; shared-housing and lease rules",
+      sourceKey: "hud_coc",
+      reportingDate: new Date().toISOString().slice(0, 7),
+    },
+  ],
 };
 
 // Geo-specific VAMC local admin org
@@ -109,6 +122,7 @@ const VAMC_ORG: Record<string, string> = {
   "WA-500": "VA Puget Sound Health Care System (Seattle)",
   "CO-503": "Eastern Colorado VA Health Care System (Denver)",
   "NC-505": "W.G. (Bill) Hefner VA Medical Center (Salisbury/Charlotte)",
+  "PA-500": "Corporal Michael J. Crescenz VA Medical Center (Philadelphia)",
 };
 
 export function collectVaPrograms(geo: GeoContext): CollectorResult<VaProgramData> {

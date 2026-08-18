@@ -14,7 +14,46 @@ import type { CollectedData, ScoringResult, ScorecardItem } from "./types";
 function scoreHousingNeed(data: CollectedData): ScorecardItem {
   const pit = data.pit.data;
   if (!pit || pit.totalHomeless === null) {
-    return { key: "housing_need", label: "Housing Need", numericScore: null, band: "Unknown", weight: 0.25, weightedContribution: null, reason: "PIT count data unavailable", missingEvidence: "HUD PIT data not collected for this geography" };
+    // PIT is the preferred direct measure. When its CoC report has not yet
+    // been matched, use clearly labelled ACS/CHAS vulnerability evidence so a
+    // city is not falsely treated as having no housing need.
+    const povertyRate = data.census.data?.povertyRatePct;
+    if (povertyRate !== null && povertyRate !== undefined) {
+      const pct = povertyRate * 100;
+      const score = pct >= 25 ? 75 : pct >= 18 ? 65 : pct >= 12 ? 55 : 45;
+      return {
+        key: "housing_need",
+        label: "Housing Need",
+        numericScore: score,
+        band: score >= 70 ? "High" : score >= 40 ? "Medium" : "Low",
+        weight: 0.25,
+        weightedContribution: score * 0.25,
+        reason: `Local PIT count is not yet matched; ACS poverty rate ${pct.toFixed(1)}% indicates housing vulnerability`,
+        missingEvidence: "HUD CoC PIT count is still needed to verify the size and composition of the homeless population",
+      };
+    }
+
+    const chas = data.chas.data;
+    if (chas?.totalOccupied && chas.totalOccupied > 0) {
+      const burden30 = chas.renterCostBurdened30pct ?? 0;
+      const burden50 = chas.renterCostBurdened50pct ?? 0;
+      if (burden30 > 0 || burden50 > 0) {
+        const severeShare = burden50 / chas.totalOccupied;
+        const score = severeShare >= 0.15 ? 65 : 55;
+        return {
+          key: "housing_need",
+          label: "Housing Need",
+          numericScore: score,
+          band: "Medium",
+          weight: 0.25,
+          weightedContribution: score * 0.25,
+          reason: `Local PIT count is not yet matched; HUD CHAS identifies ${burden30.toLocaleString()} cost-burdened and ${burden50.toLocaleString()} severely cost-burdened renter households`,
+          missingEvidence: "HUD CoC PIT count is still needed to verify the size and composition of the homeless population",
+        };
+      }
+    }
+
+    return { key: "housing_need", label: "Housing Need", numericScore: null, band: "Unknown", weight: 0.25, weightedContribution: null, reason: "Verified local housing-need evidence is unavailable", missingEvidence: "HUD CoC PIT, Census poverty, or HUD CHAS housing-burden evidence is required" };
   }
   // Rate: homeless per 10,000 (Atlanta ~57/10k is High)
   const census = data.census.data;
@@ -129,18 +168,18 @@ export function scoreMarket(data: CollectedData): ScoringResult {
 
   const scorecard = [hn, pf, pa, rr, or];
 
-  // If any critical category is null → Insufficient Evidence
+  // Only stop scoring when no defensible housing-need measure or proxy exists.
   if (hn.numericScore === null || pf.numericScore === null || pa.numericScore === null) {
     return {
       overallScore: null,
       confidence: "insufficient_data",
       verdict: "Insufficient Evidence",
-      verdictExplanation: "Critical data sources were unavailable. Collect HUD PIT counts, FMR benchmarks, and program details before scoring.",
+      verdictExplanation: "Verified local housing-need evidence was unavailable. The report will not guess a homelessness count or market verdict without PIT, Census poverty, or HUD CHAS evidence.",
       scorecard,
       bestTargetPopulation: "Pending data collection",
       bestProgramOpportunity: "Pending verification",
-      largestBlocker: "Insufficient data to score this market",
-      primaryNextAction: "Collect required data sources and re-run the market analysis",
+      largestBlocker: "No verified local housing-need measure or defensible proxy was available",
+      primaryNextAction: "Verify the city and state, then update the report to collect local housing-need evidence",
       primaryNextActionButton: "Re-run Market Analysis",
     };
   }

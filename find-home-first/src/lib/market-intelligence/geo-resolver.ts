@@ -110,6 +110,14 @@ const METRO_LOOKUP: Record<string, MetroKnowledge> = {
     cocName: "Charlotte/Mecklenburg County CoC (NC-505)",
     phaName: "Charlotte Housing Authority",
   },
+  "philadelphia,pa": {
+    county: "Philadelphia County",
+    metro: "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD MSA",
+    fmrArea: "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD MSA",
+    cocId: "PA-500",
+    cocName: "Philadelphia CoC (PA-500)",
+    phaName: "Philadelphia Housing Authority",
+  },
 };
 
 /**

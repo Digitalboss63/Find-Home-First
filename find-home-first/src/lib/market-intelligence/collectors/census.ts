@@ -22,7 +22,60 @@ const CENSUS_PLACE_OVERRIDES: Record<string, { state: string; place: string }> =
   "seattle,wa": { state: "53", place: "63000" },
   "denver,co": { state: "08", place: "20000" },
   "charlotte,nc": { state: "37", place: "12000" },
+  "philadelphia,pa": { state: "42", place: "60000" },
 };
+
+const placeCodeCache = new Map<string, { state: string; place: string }>();
+
+async function resolvePlaceCode(
+  geo: GeoContext,
+  fetchFn: typeof fetch,
+  timeoutMs: number,
+  censusKey?: string,
+): Promise<{ state: string; place: string } | null> {
+  const placeKey = `${geo.city.toLowerCase()},${geo.stateAbbr.toLowerCase()}`;
+  const known = CENSUS_PLACE_OVERRIDES[placeKey] ?? placeCodeCache.get(placeKey);
+  if (known) return known;
+  if (!geo.stateFips || geo.stateFips === "00") return null;
+
+  const keyParam = censusKey ? `&key=${encodeURIComponent(censusKey)}` : "";
+  const url = `https://api.census.gov/data/2024/acs/acs5?get=NAME&for=place:*&in=state:${geo.stateFips}${keyParam}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchFn(url, { signal: controller.signal });
+    if (!response.ok) return null;
+    const json = await response.json() as unknown;
+    const place = parsePlaceLookup(json, geo.city);
+    if (!place) return null;
+    const resolved = { state: geo.stateFips, place };
+    placeCodeCache.set(placeKey, resolved);
+    return resolved;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function parsePlaceLookup(json: unknown, city: string): string | null {
+  if (!Array.isArray(json) || json.length < 2 || !Array.isArray(json[0])) return null;
+  const headers = json[0] as string[];
+  const nameIndex = headers.indexOf("NAME");
+  const placeIndex = headers.indexOf("place");
+  if (nameIndex < 0 || placeIndex < 0) return null;
+  const cityLower = city.trim().toLowerCase();
+  for (const rawRow of json.slice(1)) {
+    if (!Array.isArray(rawRow)) continue;
+    const row = rawRow as string[];
+    const censusName = String(row[nameIndex] ?? "").split(",")[0].trim().toLowerCase();
+    const matches = censusName === cityLower
+      || censusName.startsWith(`${cityLower} `)
+      || censusName.startsWith(`${cityLower}-`);
+    if (matches && row[placeIndex]) return row[placeIndex];
+  }
+  return null;
+}
 
 export async function collectCensusAcs(
   geo: GeoContext,
@@ -30,23 +83,24 @@ export async function collectCensusAcs(
 ): Promise<CollectorResult<CensusData>> {
   const { fetchFn = fetch, timeoutMs = 10000, censusKey } = config;
   const now = new Date().toISOString();
-  const acsVintage = "ACS 2022 5-year";
+  const acsVintage = "ACS 2024 5-year";
 
   const placeKey = `${geo.city.toLowerCase()},${geo.stateAbbr.toLowerCase()}`;
-  const override = CENSUS_PLACE_OVERRIDES[placeKey];
+  const override = CENSUS_PLACE_OVERRIDES[placeKey]
+    ?? await resolvePlaceCode(geo, fetchFn, timeoutMs, censusKey);
 
   if (!override) {
     return {
       data: null,
       status: "not_verified",
       source: makeSource(now, acsVintage, geo),
-      error: `Census place code not known for ${geo.city}, ${geo.stateAbbr}`,
+      error: `Census place code could not be resolved for ${geo.city}, ${geo.stateAbbr}`,
     };
   }
 
   const vars = ["B01003_001E", "B02001_003E", "B19013_001E", "B17001_002E", "B17001_001E"];
-  const keyParam = censusKey ? `&key=${censusKey}` : "";
-  const url = `https://api.census.gov/data/2022/acs/acs5?get=${vars.join(",")}&for=place:${override.place}&in=state:${override.state}${keyParam}`;
+  const keyParam = censusKey ? `&key=${encodeURIComponent(censusKey)}` : "";
+  const url = `https://api.census.gov/data/2024/acs/acs5?get=${vars.join(",")}&for=place:${override.place}&in=state:${override.state}${keyParam}`;
 
   try {
     const controller = new AbortController();
@@ -74,6 +128,11 @@ export async function collectCensusAcs(
     const msg = err instanceof Error ? err.message : "Network error";
     return { data: null, status: "not_verified", source: makeSource(now, acsVintage, geo), error: msg };
   }
+}
+
+/** Clears the dynamic place-code cache for deterministic tests. */
+export function _clearCensusPlaceCacheForTesting(): void {
+  placeCodeCache.clear();
 }
 
 function parseCensusResponse(json: unknown): Omit<CensusData, "acsVintage"> | null {
