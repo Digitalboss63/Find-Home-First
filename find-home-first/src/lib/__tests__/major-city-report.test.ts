@@ -142,6 +142,33 @@ describe("Philadelphia major-city coverage", () => {
   });
 });
 
+describe("supported major-city PIT coverage", () => {
+  const supportedCities = [
+    ["Atlanta, GA", "GA-500"],
+    ["Los Angeles, CA", "CA-600"],
+    ["New York, NY", "NY-600"],
+    ["Houston, TX", "TX-700"],
+    ["Phoenix, AZ", "AZ-502"],
+    ["Dallas, TX", "TX-600"],
+    ["Chicago, IL", "IL-510"],
+    ["Seattle, WA", "WA-500"],
+    ["Denver, CO", "CO-503"],
+    ["Charlotte, NC", "NC-505"],
+    ["Philadelphia, PA", "PA-500"],
+  ] as const;
+
+  it.each(supportedCities)("returns source-backed 2025 PIT data for %s", async (community, cocId) => {
+    const geo = resolveGeography(community);
+    const pit = await collectHudPit(geo);
+    expect(geo.cocId).toBe(cocId);
+    expect(pit.status).toBe("ok");
+    expect(pit.data?.reportingYear).toBe(2025);
+    expect(pit.data?.totalHomeless).toBeGreaterThan(0);
+    expect(pit.data?.veterans).toBeGreaterThan(0);
+    expect(pit.source.directUrl).toContain(`CoC_PopSub_CoC_${cocId}-2025`);
+  });
+});
+
 describe("nationwide Census fallback", () => {
   beforeEach(() => _clearCensusPlaceCacheForTesting());
 
