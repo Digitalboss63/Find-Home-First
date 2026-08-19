@@ -35,6 +35,7 @@ interface ReportApiResponse {
   report: MarketReportSnapshot | null;
   version?: number;
   generatedAt?: string;
+  needsUpdate?: boolean;
   jobStatus?: string | null;
   jobError?: string | null;
   error?: string;
@@ -52,7 +53,7 @@ type PageState =
   | { kind: "loading" }
   | { kind: "no-report" }
   | { kind: "preparing"; attempt: number }
-  | { kind: "complete"; snapshot: MarketReportSnapshot; version: number; generatedAt: string }
+  | { kind: "complete"; snapshot: MarketReportSnapshot; version: number; generatedAt: string; needsUpdate: boolean }
   | { kind: "error"; message: string; retryable: boolean };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -182,6 +183,7 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
           snapshot: body.report,
           version: body.version,
           generatedAt: body.generatedAt,
+          needsUpdate: body.needsUpdate === true,
         });
       } else if (body.jobStatus === "running") {
         startPolling(0);
@@ -233,6 +235,7 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
             snapshot: body.report,
             version: body.version,
             generatedAt: body.generatedAt,
+            needsUpdate: body.needsUpdate === true,
           });
         } else if (body.jobStatus === "failed") {
           if (!isMounted.current) return;
@@ -252,6 +255,7 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
 
   // ── Generate / Update ────────────────────────────────────────────────────────
   async function handleGenerate() {
+    const previousComplete = state.kind === "complete" ? state : null;
     setRunError(null);
     setProceedError(null);
     if (pollRef.current) clearTimeout(pollRef.current);
@@ -265,8 +269,21 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
       const body = (await res.json()) as RunApiResponse;
       if (!isMounted.current) return;
 
-      if (res.status === 429 || res.status === 409) {
+      if (res.status === 409) {
         startPolling(0);
+        return;
+      }
+      if (res.status === 429) {
+        if (previousComplete) {
+          setState(previousComplete);
+          setRunError(body.error ?? "This report was updated recently. Please try again shortly.");
+        } else {
+          setState({
+            kind: "error",
+            message: body.error ?? "This report was updated recently. Please try again shortly.",
+            retryable: true,
+          });
+        }
         return;
       }
       if (!res.ok) {
@@ -442,7 +459,7 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
   }
 
   // ── Complete ─────────────────────────────────────────────────────────────────
-  const { snapshot, version, generatedAt } = state;
+  const { snapshot, version, generatedAt, needsUpdate } = state;
 
   const generatedDate = (() => {
     try {
@@ -463,6 +480,52 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
   return (
     <div>
       {header}
+
+      {needsUpdate && (
+        <div
+          role="alert"
+          style={{
+            backgroundColor: "#FFF7D6",
+            border: "1px solid #EAB308",
+            borderRadius: "0.65rem",
+            padding: "1rem",
+            marginBottom: "1rem",
+            color: "#713F12",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "1rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <strong>This report needs an update.</strong>
+            <div style={{ fontSize: "0.85rem", marginTop: "0.2rem" }}>
+              It was created with an older data-coverage method. Update it to use the current HUD and Census evidence.
+            </div>
+          </div>
+          <button style={btnPrimary} onClick={() => void handleGenerate()} type="button">
+            Update Report Now
+          </button>
+        </div>
+      )}
+
+      {runError && (
+        <div
+          role="alert"
+          style={{
+            backgroundColor: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: "0.5rem",
+            padding: "0.75rem 1rem",
+            marginBottom: "1rem",
+            fontSize: "0.875rem",
+            color: "#991B1B",
+          }}
+        >
+          {runError}
+        </div>
+      )}
 
       {/* Minimal status bar: date + update control only */}
       <div
@@ -486,7 +549,7 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
           onClick={() => void handleGenerate()}
           type="button"
         >
-          ↻ Update Report
+          {needsUpdate ? "Update Required" : "↻ Update Report"}
         </button>
       </div>
 

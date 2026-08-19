@@ -32,6 +32,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { requireOrganization } from "@/lib/auth";
 import { projectBelongsToOrg } from "@/lib/repository";
 import { getDb } from "@/db/client";
+import { getReportByVersion } from "@/lib/repository-intelligence";
 import { buildReportDocument } from "@/lib/export/pdf-document";
 import { buildExportFilename, buildContentDisposition } from "@/lib/export/filename";
 import type { MarketReportSnapshot } from "@/lib/export/types";
@@ -77,32 +78,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Service unavailable." }, { status: 503 });
   }
 
-  // TODO(market-intelligence): Replace this stub with a real DB query once the
-  // market_research_reports table exists (added in the market intelligence phase).
-  //
-  //   const rows = await db.select({
-  //     status: marketResearchReports.status,
-  //     reportJson: marketResearchReports.reportJson,
-  //   })
-  //     .from(marketResearchReports)
-  //     .where(and(
-  //       eq(marketResearchReports.projectId, projectId),
-  //       eq(marketResearchReports.organizationId, organizationId),
-  //       eq(marketResearchReports.version, version),
-  //     ))
-  //     .limit(1);
-  //   reportRow = rows[0] ?? null;
-  //
-  // Until then, the route correctly returns 404 for all requests (table not yet present).
-  type ReportRow = { status: string; reportJson: string | null };
-  const reportRow = null as ReportRow | null;
+  const reportRow = await getReportByVersion(db, organizationId, projectId, version);
 
   if (!reportRow) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 
   // ── Version completeness check ────────────────────────────────────────────
-  if (reportRow.status !== "complete") {
+  if (reportRow.status !== "complete" && reportRow.status !== "superseded") {
     return NextResponse.json(
       { error: `Report version ${version} is not complete (status: ${reportRow.status}). Export is unavailable until collection finishes successfully.` },
       { status: 409 }
@@ -133,7 +116,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const doc = buildReportDocument({
       report,
       exportedAt,
-      onlineReportUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.findhomefirst.com"}/projects/${report.projectId}`
+      onlineReportUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.findhomefirst.com"}/projects/${report.projectId}/research`
     });
     // renderToBuffer expects ReactElement<DocumentProps>; the JSX return from
     // buildReportDocument satisfies this at runtime. Cast via unknown to satisfy

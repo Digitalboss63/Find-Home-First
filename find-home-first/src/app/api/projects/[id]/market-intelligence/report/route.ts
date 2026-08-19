@@ -12,6 +12,7 @@ import { projectBelongsToOrg } from "@/lib/repository";
 import { getDb } from "@/db/client";
 import { getLatestReport, getLatestJob } from "@/lib/repository-intelligence";
 import type { MarketReportSnapshot } from "@/lib/export/types";
+import { reportNeedsUpdate } from "@/lib/market-intelligence/report-version";
 
 export async function GET(
   _request: NextRequest,
@@ -58,6 +59,7 @@ export async function GET(
 
   return NextResponse.json({
     report: snapshot,
+    needsUpdate: reportNeedsUpdate(snapshot),
     version: report.version,
     generatedAt: report.generatedAt,
     dataThroughDate: report.dataThroughDate,

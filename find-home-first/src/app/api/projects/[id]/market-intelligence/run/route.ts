@@ -14,8 +14,10 @@ import { type NextRequest, NextResponse } from "next/server";
 import { requireOrganization } from "@/lib/auth";
 import { projectBelongsToOrg, getProjectById } from "@/lib/repository";
 import { getDb } from "@/db/client";
-import { getLatestJob } from "@/lib/repository-intelligence";
+import { getLatestJob, getLatestReport } from "@/lib/repository-intelligence";
 import { runMarketIntelligenceJob } from "@/lib/market-intelligence/job-runner";
+import { reportNeedsUpdate } from "@/lib/market-intelligence/report-version";
+import type { MarketReportSnapshot } from "@/lib/export/types";
 
 const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes between refreshes
 
@@ -44,11 +46,24 @@ export async function POST(
 
   // Cooldown: prevent duplicate runs
   try {
-    const latestJob = await getLatestJob(db, organizationId, projectId);
+    const [latestJob, latestReport] = await Promise.all([
+      getLatestJob(db, organizationId, projectId),
+      getLatestReport(db, organizationId, projectId),
+    ]);
+    let outdatedReport = false;
+    if (latestReport) {
+      try {
+        outdatedReport = reportNeedsUpdate(
+          JSON.parse(latestReport.reportJson) as MarketReportSnapshot,
+        );
+      } catch {
+        outdatedReport = true;
+      }
+    }
     if (latestJob && latestJob.status === "running") {
       return NextResponse.json({ error: "A report generation is already in progress." }, { status: 409 });
     }
-    if (latestJob && latestJob.status === "complete" && latestJob.completedAt) {
+    if (!outdatedReport && latestJob && latestJob.status === "complete" && latestJob.completedAt) {
       const elapsed = Date.now() - latestJob.completedAt.getTime();
       if (elapsed < COOLDOWN_MS) {
         return NextResponse.json(

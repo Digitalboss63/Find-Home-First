@@ -5,6 +5,7 @@
  */
 import type { MarketReportSnapshot, DemographicMetric, ProgramOpportunity, EconomicsScenario, Barrier, LaunchStep } from "../export/types";
 import type { CollectedData, ScoringResult } from "./types";
+import { CURRENT_REPORT_ENGINE_VERSION } from "./report-version";
 
 export function buildReport(
   reportId: string,
@@ -180,6 +181,7 @@ export function buildReport(
   ].map(toReportSource);
 
   return {
+    analysisEngineVersion: CURRENT_REPORT_ENGINE_VERSION,
     reportId,
     projectId,
     projectName,
