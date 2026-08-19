@@ -54,7 +54,7 @@ type PageState =
   | { kind: "no-report" }
   | { kind: "preparing"; attempt: number }
   | { kind: "complete"; snapshot: MarketReportSnapshot; version: number; generatedAt: string; needsUpdate: boolean }
-  | { kind: "error"; message: string; retryable: boolean };
+  | { kind: "error"; message: string; retryable: boolean; retry: "load" | "generate" };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -159,18 +159,23 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
   }, []);
 
   // ── Load report ──────────────────────────────────────────────────────────────
-  async function loadReport() {
+  async function loadReport(attempt = 0) {
     try {
       const res = await fetch(
         `/api/projects/${projectIdRef.current}/market-intelligence/report`
       );
       if (!res.ok) {
+        if (res.status >= 500 && attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 750 * (attempt + 1)));
+          return loadReport(attempt + 1);
+        }
         const body = (await res.json()) as ReportApiResponse;
         if (!isMounted.current) return;
         setState({
           kind: "error",
           message: body.error ?? `Could not load report (HTTP ${res.status}).`,
           retryable: true,
+          retry: "load",
         });
         return;
       }
@@ -192,7 +197,11 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
       }
     } catch {
       if (!isMounted.current) return;
-      setState({ kind: "error", message: "Network error — could not load report.", retryable: true });
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 750 * (attempt + 1)));
+        return loadReport(attempt + 1);
+      }
+      setState({ kind: "error", message: "Network error — could not load report.", retryable: true, retry: "load" });
     }
   }
 
@@ -213,6 +222,7 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
         message:
           "Report preparation is taking longer than expected. Check back in a few minutes.",
         retryable: true,
+        retry: "generate",
       });
       return;
     }
@@ -243,6 +253,7 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
             kind: "error",
             message: body.jobError ?? "Report preparation failed.",
             retryable: true,
+            retry: "generate",
           });
         } else {
           startPolling(attempt + 1);
@@ -282,27 +293,40 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
             kind: "error",
             message: body.error ?? "This report was updated recently. Please try again shortly.",
             retryable: true,
+            retry: "generate",
           });
         }
         return;
       }
       if (!res.ok) {
-        setState({
-          kind: "error",
-          message: body.error ?? "Could not start report preparation.",
-          retryable: true,
-        });
+        if (previousComplete) {
+          setState(previousComplete);
+          setRunError(body.error ?? "Could not update the report. Your saved report is still available.");
+        } else {
+          setState({
+            kind: "error",
+            message: body.error ?? "Could not start report preparation.",
+            retryable: true,
+            retry: "generate",
+          });
+        }
         return;
       }
 
       await loadReport();
     } catch {
       if (!isMounted.current) return;
-      setState({
-        kind: "error",
-        message: "Network error — could not start report preparation.",
-        retryable: true,
-      });
+      if (previousComplete) {
+        setState(previousComplete);
+        setRunError("The update lost its connection. Your saved report is still available.");
+      } else {
+        setState({
+          kind: "error",
+          message: "Network error — could not start report preparation.",
+          retryable: true,
+          retry: "generate",
+        });
+      }
     }
   }
 
@@ -449,7 +473,18 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
             {state.message}
           </p>
           {state.retryable && (
-            <button style={btnPrimary} onClick={() => void handleGenerate()}>
+            <button
+              style={btnPrimary}
+              onClick={() => {
+                if (state.retry === "load") {
+                  setState({ kind: "loading" });
+                  void loadReport();
+                } else {
+                  void handleGenerate();
+                }
+              }}
+              type="button"
+            >
               Try Again
             </button>
           )}

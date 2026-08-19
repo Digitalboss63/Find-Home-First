@@ -25,9 +25,8 @@
 import { describe, it, expect } from "vitest";
 import { buildExportFilename, buildContentDisposition } from "../export/filename";
 import { buildExcelWorkbook } from "../export/excel-workbook";
-import { buildReportDocument } from "../export/pdf-document";
+import { buildPdfBuffer } from "../export/pdf-buffer";
 import { ATLANTA_FIXTURE } from "./fixtures/atlas-market-report";
-import { renderToBuffer } from "@react-pdf/renderer";
 import type { ExportInput } from "../export/types";
 
 const EXPORTED_AT = "2026-08-03T22:00:00.000Z";
@@ -271,32 +270,32 @@ describe("buildExcelWorkbook — security", () => {
 });
 
 // ─── AT-26: PDF renders as valid PDF ─────────────────────────────────────────
-// NOTE: renderToBuffer uses @react-pdf/renderer's internal worker pipeline
-// which does not terminate cleanly inside Vitest's worker pool (known issue).
-// PDF render tests are covered by the standalone scripts/verify-exports.mjs
-// which runs outside Vitest. These tests are intentionally skipped here.
 
-describe.skip("buildReportDocument + renderToBuffer (run via scripts/verify-exports.mjs)", () => {
+describe("buildPdfBuffer", () => {
   it("produces a buffer starting with %PDF", async () => {
-    const doc = buildReportDocument(FIXTURE_INPUT);
-    const buffer = await renderToBuffer(doc as unknown as Parameters<typeof renderToBuffer>[0]);
+    const buffer = await buildPdfBuffer(FIXTURE_INPUT);
     expect(buffer.slice(0, 4).toString()).toBe("%PDF");
   });
 
   it("produces a non-trivial buffer (at least 5 KB)", async () => {
-    const doc = buildReportDocument(FIXTURE_INPUT);
-    const buffer = await renderToBuffer(doc as unknown as Parameters<typeof renderToBuffer>[0]);
+    const buffer = await buildPdfBuffer(FIXTURE_INPUT);
     expect(buffer.length).toBeGreaterThan(5 * 1024);
   });
 
   it("contains no credential strings", async () => {
-    const doc = buildReportDocument(FIXTURE_INPUT);
-    const buffer = await renderToBuffer(doc as unknown as Parameters<typeof renderToBuffer>[0]);
+    const buffer = await buildPdfBuffer(FIXTURE_INPUT);
     const content = buffer.toString("latin1");
     const forbidden = ["API_KEY", "DATABASE_URL", "CLERK_SECRET", "sk_live_", "sk_test_", "HUD_TOKEN"];
     forbidden.forEach((keyword) => {
       expect(content).not.toContain(keyword);
     });
+  });
+
+  it("creates a readable multi-page report", async () => {
+    const { PDFDocument } = await import("pdf-lib");
+    const buffer = await buildPdfBuffer(FIXTURE_INPUT);
+    const document = await PDFDocument.load(buffer);
+    expect(document.getPageCount()).toBeGreaterThanOrEqual(10);
   });
 });
 

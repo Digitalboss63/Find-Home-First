@@ -33,10 +33,9 @@ import { requireOrganization } from "@/lib/auth";
 import { projectBelongsToOrg } from "@/lib/repository";
 import { getDb } from "@/db/client";
 import { getReportByVersion } from "@/lib/repository-intelligence";
-import { buildReportDocument } from "@/lib/export/pdf-document";
+import { buildPdfBuffer } from "@/lib/export/pdf-buffer";
 import { buildExportFilename, buildContentDisposition } from "@/lib/export/filename";
 import type { MarketReportSnapshot } from "@/lib/export/types";
-import { renderToBuffer } from "@react-pdf/renderer";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_REPORT_JSON_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -113,15 +112,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const exportedAt = new Date().toISOString();
   let pdfBuffer: Buffer;
   try {
-    const doc = buildReportDocument({
+    pdfBuffer = await buildPdfBuffer({
       report,
       exportedAt,
       onlineReportUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.findhomefirst.com"}/projects/${report.projectId}/research`
     });
-    // renderToBuffer expects ReactElement<DocumentProps>; the JSX return from
-    // buildReportDocument satisfies this at runtime. Cast via unknown to satisfy
-    // the TypeScript overload while keeping the actual type correct.
-    pdfBuffer = await renderToBuffer(doc as unknown as Parameters<typeof renderToBuffer>[0]);
   } catch {
     // Intentionally not forwarding the internal error message
     return NextResponse.json({ error: "PDF generation failed. Please try again." }, { status: 500 });

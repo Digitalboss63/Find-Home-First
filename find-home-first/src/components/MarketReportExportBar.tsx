@@ -70,6 +70,7 @@ export function MarketReportExportBar({
   onlineReportUrl,
 }: Props) {
   const [downloading, setDownloading] = useState<"pdf" | "xlsx" | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const versionLabel = refreshInProgress
     ? `Previous completed version v${completedVersion}`
@@ -89,12 +90,15 @@ export function MarketReportExportBar({
 
   async function handleDownload(format: "pdf" | "xlsx") {
     setDownloading(format);
+    setDownloadError(null);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45_000);
     try {
       const url = `/api/export/market-research/${format}?projectId=${encodeURIComponent(projectId)}&version=${completedVersion}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: controller.signal });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
-        alert(`Export failed: ${body.error ?? res.statusText}`);
+        setDownloadError(body.error ?? `Export failed (${res.status}). Please try again.`);
         return;
       }
       const blob = await res.blob();
@@ -107,7 +111,14 @@ export function MarketReportExportBar({
         `market-report-v${completedVersion}.${format}`;
       anchor.click();
       URL.revokeObjectURL(anchor.href);
+    } catch (error) {
+      setDownloadError(
+        error instanceof DOMException && error.name === "AbortError"
+          ? "The download took too long and was stopped. Please try again."
+          : "The download could not be completed. Please try again.",
+      );
     } finally {
+      window.clearTimeout(timeout);
       setDownloading(null);
     }
   }
@@ -187,6 +198,14 @@ export function MarketReportExportBar({
           {downloading === "xlsx" ? "Downloading…" : "⬇ Download Excel"}
         </button>
       </div>
+      {downloadError && (
+        <div
+          role="alert"
+          style={{ width: "100%", color: "#991B1B", fontSize: "0.8rem", fontWeight: 600 }}
+        >
+          {downloadError}
+        </div>
+      )}
     </div>
   );
 }
