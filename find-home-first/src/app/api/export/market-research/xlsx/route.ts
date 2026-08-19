@@ -27,6 +27,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { requireOrganization } from "@/lib/auth";
 import { projectBelongsToOrg } from "@/lib/repository";
 import { getDb } from "@/db/client";
+import { getReportByVersion } from "@/lib/repository-intelligence";
 import { buildExcelWorkbook } from "@/lib/export/excel-workbook";
 import { buildExportFilename, buildContentDisposition } from "@/lib/export/filename";
 import type { MarketReportSnapshot } from "@/lib/export/types";
@@ -71,16 +72,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Service unavailable." }, { status: 503 });
   }
 
-  // TODO(market-intelligence): Replace stub with real DB query once
-  // market_research_reports table exists. See pdf/route.ts for pattern.
-  type ReportRow = { status: string; reportJson: string | null };
-  const reportRow = null as ReportRow | null;
+  const reportRow = await getReportByVersion(db, organizationId, projectId, version);
 
   if (!reportRow) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 
-  if (reportRow.status !== "complete") {
+  if (reportRow.status !== "complete" && reportRow.status !== "superseded") {
     return NextResponse.json(
       { error: `Report version ${version} is not complete (status: ${reportRow.status}). Export is unavailable until collection finishes successfully.` },
       { status: 409 }

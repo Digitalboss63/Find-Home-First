@@ -456,17 +456,53 @@ describe("buildExcelWorkbook — extended structural verification", () => {
 // ─── AT-35: Incomplete/generating report returns 409 ─────────────────────────
 
 describe("route status validation logic (unit — no live DB)", () => {
-  it("status !== complete should produce 409 message", () => {
-    // Verify the logic string that the route uses — not calling the route itself
-    const incompleteStatuses = ["generating", "failed", "superseded"];
+  it("generating and failed reports are blocked; complete and superseded versions export", () => {
+    const incompleteStatuses = ["generating", "failed"];
     incompleteStatuses.forEach((status) => {
-      expect(status).not.toBe("complete");
+      expect(status !== "complete" && status !== "superseded").toBe(true);
     });
-    // The route guard: if (reportRow.status !== "complete") → 409
-    const guard = (status: string) => status !== "complete";
+    const guard = (status: string) => status !== "complete" && status !== "superseded";
     expect(guard("generating")).toBe(true);
     expect(guard("failed")).toBe(true);
     expect(guard("complete")).toBe(false);
+    expect(guard("superseded")).toBe(false);
+  });
+});
+
+// ─── Export route report lookup regression ──────────────────────────────────
+
+describe("export routes load the requested version from PostgreSQL", () => {
+  async function readRoutes() {
+    const { readFileSync } = await import("fs");
+    const pdf = readFileSync(
+      new URL("../../app/api/export/market-research/pdf/route.ts", import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1"),
+      "utf8"
+    );
+    const xlsx = readFileSync(
+      new URL("../../app/api/export/market-research/xlsx/route.ts", import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1"),
+      "utf8"
+    );
+    return { pdf, xlsx };
+  }
+
+  it("PDF route uses getReportByVersion with authenticated organization and exact version", async () => {
+    const { pdf } = await readRoutes();
+    expect(pdf).toContain('import { getReportByVersion } from "@/lib/repository-intelligence"');
+    expect(pdf).toContain("getReportByVersion(db, organizationId, projectId, version)");
+    expect(pdf).not.toMatch(/const reportRow\s*=\s*null/);
+  });
+
+  it("Excel route uses getReportByVersion with authenticated organization and exact version", async () => {
+    const { xlsx } = await readRoutes();
+    expect(xlsx).toContain('import { getReportByVersion } from "@/lib/repository-intelligence"');
+    expect(xlsx).toContain("getReportByVersion(db, organizationId, projectId, version)");
+    expect(xlsx).not.toMatch(/const reportRow\s*=\s*null/);
+  });
+
+  it("both routes permit superseded historical versions", async () => {
+    const { pdf, xlsx } = await readRoutes();
+    expect(pdf).toContain('reportRow.status !== "superseded"');
+    expect(xlsx).toContain('reportRow.status !== "superseded"');
   });
 });
 

@@ -115,6 +115,8 @@ export interface LaunchStep {
 
 export interface MarketReportSnapshot {
   // Identity
+  /** Version of the collection/scoring rules used to create this snapshot. */
+  analysisEngineVersion?: number;
   reportId: string;
   projectId: string;
   projectName: string;
