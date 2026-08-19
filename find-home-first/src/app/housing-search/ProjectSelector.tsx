@@ -4,7 +4,41 @@
  */
 import Link from "next/link";
 import type { ProjectView } from "@/lib/repository";
-import { getStageLabelForKey } from "@/lib/stages";
+
+const PROPERTY_SEARCH_ELIGIBLE_STATUSES = new Set([
+  "city_approved",
+  "finding_property",
+  "contacting_owner",
+  "application_in_progress",
+  "property_approved",
+  "preparing_property",
+  "seeking_referrals",
+  "reviewing_resident",
+  "placement_approved",
+]);
+
+export function getProjectNextStep(project: ProjectView): {
+  href: string;
+  label: string;
+  helper: string;
+  isReady: boolean;
+} {
+  const isReady = PROPERTY_SEARCH_ELIGIBLE_STATUSES.has(project.currentStatus);
+
+  return isReady
+    ? {
+        href: `/housing-search?project=${project.id}`,
+        label: "Find Properties",
+        helper: "Ready for property search",
+        isReady: true,
+      }
+    : {
+        href: `/projects/${project.id}/research`,
+        label: "View City Report",
+        helper: "Complete the City Report first",
+        isReady: false,
+      };
+}
 
 interface Props {
   projects: ProjectView[];
@@ -65,49 +99,65 @@ export default function ProjectSelector({ projects }: Props) {
         className="text-sm mb-8"
         style={{ color: "var(--color-text)", opacity: 0.6 }}
       >
-        Select a placement project to search properties for.
+        Choose a project. We&apos;ll take you to the correct next step.
       </p>
 
       <ul className="space-y-2 mb-6">
-        {projects.map((project) => (
-          <li key={project.id}>
-            <Link
-              href={`/housing-search?project=${project.id}`}
-              className="flex items-start justify-between gap-4 rounded-xl px-5 py-4 group"
-              style={{
-                backgroundColor: "#fff",
-                border: "1px solid var(--color-border)",
-              }}
-            >
-              <div className="min-w-0">
-                <p
-                  className="font-semibold text-sm group-hover:underline"
-                  style={{ color: "var(--color-primary)" }}
-                >
-                  {project.name}
-                </p>
-                <p
-                  className="text-xs mt-0.5"
-                  style={{ color: "var(--color-text)", opacity: 0.6 }}
-                >
-                  {project.community}
-                </p>
-              </div>
-              <div className="shrink-0">
+        {projects.map((project) => {
+          const nextStep = getProjectNextStep(project);
+
+          return (
+            <li key={project.id}>
+              <Link
+                href={nextStep.href}
+                aria-label={`${nextStep.label} for ${project.name}`}
+                className="group flex flex-col items-stretch justify-between gap-4 rounded-xl px-5 py-5 sm:flex-row sm:items-center sm:gap-5"
+                style={{
+                  backgroundColor: "#fff",
+                  border: "1px solid var(--color-border)",
+                }}
+              >
+                <div className="min-w-0">
+                  <p
+                    className="font-semibold text-sm group-hover:underline"
+                    style={{ color: "var(--color-primary)" }}
+                  >
+                    {project.name}
+                  </p>
+                  <p
+                    className="text-xs mt-0.5"
+                    style={{ color: "var(--color-text)", opacity: 0.6 }}
+                  >
+                    {project.community}
+                  </p>
+                  <p
+                    className="text-xs mt-2 font-medium"
+                    style={{
+                      color: nextStep.isReady
+                        ? "#166534"
+                        : "var(--color-text)",
+                      opacity: nextStep.isReady ? 1 : 0.65,
+                    }}
+                  >
+                    {nextStep.helper}
+                  </p>
+                </div>
                 <span
-                  className="text-xs font-medium px-2 py-1 rounded-full"
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"
                   style={{
-                    backgroundColor: "var(--color-surface-soft)",
-                    color: "var(--color-secondary)",
-                    border: "1px solid var(--color-border)",
+                    backgroundColor: nextStep.isReady
+                      ? "var(--color-action)"
+                      : "var(--color-primary)",
+                    color: "#fff",
                   }}
                 >
-                  {getStageLabelForKey(project.currentStage)}
+                  {nextStep.label}
+                  <span aria-hidden="true">→</span>
                 </span>
-              </div>
-            </Link>
-          </li>
-        ))}
+              </Link>
+            </li>
+          );
+        })}
       </ul>
 
       <Link

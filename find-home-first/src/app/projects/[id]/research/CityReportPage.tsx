@@ -512,6 +512,63 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
       ? `${window.location.origin}/projects/${projectId}/research`
       : `/projects/${projectId}/research`;
 
+  function renderProceedPanel(position: "top" | "bottom") {
+    return (
+      <div
+        data-next-step={position}
+        style={{
+          marginTop: position === "bottom" ? "2rem" : 0,
+          marginBottom: position === "top" ? "1rem" : 0,
+          padding: "1.5rem",
+          backgroundColor: "#F0FDF4",
+          border: "1px solid #BBF7D0",
+          borderRadius: "0.75rem",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "1rem",
+        }}
+      >
+        <div>
+          <p
+            style={{ fontWeight: 700, color: "#166534", margin: "0 0 0.25rem", fontSize: "0.95rem" }}
+          >
+            Ready to search for properties?
+          </p>
+          <p style={{ fontSize: "0.825rem", color: "#166534", margin: 0, opacity: 0.8 }}>
+            {alreadyEligible
+              ? "This project is ready. Open the property finder to continue."
+              : "This will move the project to property search and open the finder."}
+          </p>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.375rem" }}>
+          <button
+            style={{
+              ...btnProceed,
+              opacity: isProceedPending ? 0.6 : 1,
+              cursor: isProceedPending ? "not-allowed" : "pointer",
+            }}
+            onClick={handleProceed}
+            disabled={isProceedPending}
+            type="button"
+          >
+            {isProceedPending ? "Opening…" : "Proceed to Find Properties →"}
+          </button>
+          {proceedError && (
+            <p
+              role="alert"
+              style={{ fontSize: "0.8rem", color: "#991B1B", margin: 0 }}
+            >
+              {proceedError}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       {header}
@@ -562,6 +619,9 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
         </div>
       )}
 
+      {/* Keep the primary next step visible before the long report. */}
+      {renderProceedPanel("top")}
+
       {/* Minimal status bar: date + update control only */}
       <div
         style={{
@@ -599,57 +659,8 @@ export function CityReportPage({ projectId, projectName, community, currentStatu
       {/* Report body */}
       <MarketReportView report={snapshot} />
 
-      {/* Proceed to Find Properties */}
-      <div
-        style={{
-          marginTop: "2rem",
-          padding: "1.5rem",
-          backgroundColor: "#F0FDF4",
-          border: "1px solid #BBF7D0",
-          borderRadius: "0.75rem",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: "1rem",
-        }}
-      >
-        <div>
-          <p
-            style={{ fontWeight: 700, color: "#166534", margin: "0 0 0.25rem", fontSize: "0.95rem" }}
-          >
-            Ready to search for properties?
-          </p>
-          <p style={{ fontSize: "0.825rem", color: "#166534", margin: 0, opacity: 0.8 }}>
-            {alreadyEligible
-              ? "This project is already in the property search stage."
-              : "Proceeding will advance this project to property discovery."}
-          </p>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.375rem" }}>
-          <button
-            style={{
-              ...btnProceed,
-              opacity: isProceedPending ? 0.6 : 1,
-              cursor: isProceedPending ? "not-allowed" : "pointer",
-            }}
-            onClick={handleProceed}
-            disabled={isProceedPending}
-            type="button"
-          >
-            {isProceedPending ? "Opening…" : "Proceed to Find Properties →"}
-          </button>
-          {proceedError && (
-            <p
-              role="alert"
-              style={{ fontSize: "0.8rem", color: "#991B1B", margin: 0 }}
-            >
-              {proceedError}
-            </p>
-          )}
-        </div>
-      </div>
+      {/* Repeat the next step after the long report. */}
+      {renderProceedPanel("bottom")}
     </div>
   );
 }
