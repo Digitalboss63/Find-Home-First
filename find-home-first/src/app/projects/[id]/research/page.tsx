@@ -9,7 +9,6 @@
  * intact and available for future use; they are not part of the active flow.
  */
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireOrganization } from "@/lib/auth";
 import { getProjectById } from "@/lib/repository";
@@ -36,14 +35,6 @@ export default async function ResearchPage({ params }: Props) {
 
   return (
     <div style={{ maxWidth: "64rem", margin: "0 auto", padding: "2rem 1.5rem" }}>
-      <div style={{ marginBottom: "1.25rem" }}>
-        <Link
-          href={`/projects/${id}`}
-          style={{ fontSize: "0.875rem", color: "var(--color-action)", textDecoration: "none" }}
-        >
-          ← Back to Project
-        </Link>
-      </div>
       <VeteranNeedTargeting projectId={id} />
       <CityReportPage
         projectId={id}
