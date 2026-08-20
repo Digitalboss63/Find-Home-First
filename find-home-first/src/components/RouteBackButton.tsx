@@ -65,7 +65,7 @@ export default function RouteBackButton() {
         }}
       >
         <span aria-hidden="true">←</span>
-        <span>{target.label.replace(/^Back to /, "Back to ")}</span>
+        <span>{target.label}</span>
       </Link>
     </div>
   );
