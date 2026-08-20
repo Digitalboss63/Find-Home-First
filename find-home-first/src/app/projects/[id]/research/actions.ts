@@ -383,8 +383,9 @@ const ALREADY_ELIGIBLE_STATUSES = new Set([
  *   4. The current project status is researching_city (advance required)
  *      OR already eligible (redirect directly, no DB write).
  *
- * On any failure the function returns an error string; it never throws
- * past the caller boundary.
+ * Authentication and organization redirects from requireOrganization() are
+ * intentionally allowed to propagate so the real destination is preserved.
+ * Operational failures return a plain error string to the caller.
  *
  * The full transaction (status update + history insert) rolls back
  * automatically if either step fails.
@@ -393,13 +394,7 @@ export async function proceedToFindPropertiesAction(
   projectId: string
 ): Promise<{ error: string } | never> {
   // ── 1. Auth ────────────────────────────────────────────────────────────────
-  let orgCtx: Awaited<ReturnType<typeof requireOrganization>>;
-  try {
-    orgCtx = await requireOrganization();
-  } catch {
-    return { error: "Authentication required." };
-  }
-  const { organizationId } = orgCtx;
+  const { organizationId } = await requireOrganization();
 
   // ── 2. Ownership guard ─────────────────────────────────────────────────────
   if (!projectId || typeof projectId !== "string") {
