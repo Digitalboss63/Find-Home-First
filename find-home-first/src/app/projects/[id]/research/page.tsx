@@ -14,6 +14,7 @@ import { notFound } from "next/navigation";
 import { requireOrganization } from "@/lib/auth";
 import { getProjectById } from "@/lib/repository";
 import { CityReportPage } from "./CityReportPage";
+import { VeteranNeedTargeting } from "./VeteranNeedTargeting";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -43,6 +44,7 @@ export default async function ResearchPage({ params }: Props) {
           ← Back to Project
         </Link>
       </div>
+      <VeteranNeedTargeting projectId={id} />
       <CityReportPage
         projectId={id}
         projectName={project.name}
