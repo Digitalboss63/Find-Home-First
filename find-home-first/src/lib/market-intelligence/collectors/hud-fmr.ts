@@ -33,6 +33,7 @@ const KNOWN_FMR: Record<string, FmrData> = {
   "WA-500": { studio: 1736, oneBr: 2064, twoBr: 2538, threeBr: 3510, fourBr: 4190, fmrYear: "FY2026", fmrArea: "Seattle-Bellevue HMFA" },
   "CO-503": { studio: 1421, oneBr: 1634, twoBr: 2031, threeBr: 2869, fourBr: 3380, fmrYear: "FY2026", fmrArea: "Denver-Aurora-Lakewood HMFA" },
   "NC-505": { studio: 1050, oneBr: 1178, twoBr: 1410, threeBr: 1869, fourBr: 2200, fmrYear: "FY2026", fmrArea: "Charlotte-Concord-Gastonia HMFA" },
+  "PA-500": { studio: 1397, oneBr: 1520, twoBr: 1810, threeBr: 2170, fourBr: 2423, fmrYear: "FY2026", fmrArea: "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD MSA" },
 };
 
 // In-memory cache of resolved entity IDs per city+state lookup key.
@@ -177,6 +178,133 @@ function parseFmrDataResponse(json: unknown, geo: GeoContext): FmrData | null {
   return { studio: efficiency, oneBr, twoBr, threeBr, fourBr, fmrYear, fmrArea: areaName };
 }
 
+interface StateFmrResolution {
+  data: FmrData;
+  isEstimate: boolean;
+}
+
+function parseStateRow(row: Record<string, unknown>, year: string, areaName: string): FmrData | null {
+  const studio = Number(row["Efficiency"] ?? 0);
+  const oneBr = Number(row["One-Bedroom"] ?? 0);
+  const twoBr = Number(row["Two-Bedroom"] ?? 0);
+  const threeBr = Number(row["Three-Bedroom"] ?? 0);
+  const fourBr = Number(row["Four-Bedroom"] ?? 0);
+  if (![studio, oneBr, twoBr, threeBr, fourBr].every((value) => Number.isFinite(value) && value > 0)) {
+    return null;
+  }
+  return {
+    studio,
+    oneBr,
+    twoBr,
+    threeBr,
+    fourBr,
+    fmrYear: year.startsWith("FY") ? year : `FY${year}`,
+    fmrArea: areaName,
+  };
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? Math.round((sorted[middle - 1] + sorted[middle]) / 2)
+    : sorted[middle];
+}
+
+/**
+ * Resolves a municipality from HUD's statewide FMR response. When HUD does not
+ * publish a municipality-level row, returns the median of the state's unique
+ * HUD FMR schedules as a clearly labelled planning estimate.
+ */
+function parseStateFmrResponse(json: unknown, geo: GeoContext): StateFmrResolution | null {
+  if (!json || typeof json !== "object") return null;
+  const root = json as Record<string, unknown>;
+  const data = root["data"] && typeof root["data"] === "object"
+    ? root["data"] as Record<string, unknown>
+    : null;
+  if (!data) return null;
+
+  const year = String(data["year"] ?? new Date().getFullYear());
+  const metroRows = Array.isArray(data["metroareas"])
+    ? data["metroareas"].filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object")
+    : [];
+  const countyRows = Array.isArray(data["counties"])
+    ? data["counties"].filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object")
+    : [];
+  const city = geo.city.toLowerCase();
+  const county = geo.county?.toLowerCase() ?? null;
+
+  const countyMatch = countyRows.find((row) => {
+    const townName = String(row["town_name"] ?? "").toLowerCase();
+    const countyName = String(row["county_name"] ?? "").toLowerCase();
+    return townName.includes(city) || countyName.includes(city) || Boolean(county && countyName.includes(county));
+  });
+  if (countyMatch) {
+    const townName = String(countyMatch["town_name"] ?? "").trim();
+    const countyName = String(countyMatch["county_name"] ?? "").trim();
+    const metroName = String(countyMatch["metro_name"] ?? "").trim();
+    const areaName = townName || countyName || metroName || `${geo.city}, ${geo.stateAbbr}`;
+    const parsed = parseStateRow(countyMatch, year, areaName);
+    if (parsed) return { data: parsed, isEstimate: false };
+  }
+
+  const metroMatch = metroRows.find((row) => String(row["name"] ?? "").toLowerCase().includes(city));
+  if (metroMatch) {
+    const areaName = String(metroMatch["name"] ?? `${geo.city}, ${geo.stateAbbr}`).trim();
+    const parsed = parseStateRow(metroMatch, year, areaName);
+    if (parsed) return { data: parsed, isEstimate: false };
+  }
+
+  // Deduplicate identical HUD rent schedules so a large multi-county metro is
+  // not counted repeatedly when calculating the state planning estimate.
+  const unique = new Map<string, FmrData>();
+  for (const row of [...metroRows, ...countyRows]) {
+    const parsed = parseStateRow(row, year, "");
+    if (!parsed) continue;
+    const key = [parsed.studio, parsed.oneBr, parsed.twoBr, parsed.threeBr, parsed.fourBr].join(":");
+    unique.set(key, parsed);
+  }
+  const schedules = [...unique.values()];
+  if (schedules.length === 0) return null;
+
+  return {
+    data: {
+      studio: median(schedules.map((row) => row.studio)),
+      oneBr: median(schedules.map((row) => row.oneBr)),
+      twoBr: median(schedules.map((row) => row.twoBr)),
+      threeBr: median(schedules.map((row) => row.threeBr)),
+      fourBr: median(schedules.map((row) => row.fourBr)),
+      fmrYear: year.startsWith("FY") ? year : `FY${year}`,
+      fmrArea: `${geo.stateAbbr} statewide HUD FMR median estimate for ${geo.city}`,
+    },
+    isEstimate: true,
+  };
+}
+
+async function collectStateFmr(
+  geo: GeoContext,
+  token: string,
+  fetchFn: typeof fetch,
+  timeoutMs: number,
+): Promise<StateFmrResolution | null> {
+  if (!/^[A-Z]{2}$/.test(geo.stateAbbr)) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const currentYear = new Date().getFullYear();
+    const res = await fetchFn(`${HUD_API_BASE}/fmr/statedata/${geo.stateAbbr}?year=${currentYear}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    return parseStateFmrResponse(await res.json() as unknown, geo);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function collectHudFmr(
   geo: GeoContext,
   config: HudFmrCollectorConfig = {}
@@ -251,26 +379,54 @@ export async function collectHudFmr(
     }
   }
 
-  // Static known data fallback for recognized CoCs
+  // Static official data fallback for recognized CoCs
   const cocKey = geo.cocId;
   if (cocKey && KNOWN_FMR[cocKey]) {
     const fmr = KNOWN_FMR[cocKey];
+    const isCurrentFiscalYear = fmr.fmrYear === `FY${new Date().getFullYear()}`;
     return {
       data: fmr,
-      status: hudToken ? "partial" : "ok",
+      status: isCurrentFiscalYear ? "ok" : "partial",
       source: {
         sourceKey: "hud_fmr",
         sourceAgency: "U.S. Department of Housing and Urban Development",
         datasetName: `${fmr.fmrYear} Fair Market Rents (published data)`,
-        directUrl: "https://www.huduser.gov/portal/datasets/fmr.html",
+        directUrl: "https://www.huduser.gov/portal/datasets/fmr/fmr2026/FY2026_FMR_Schedule.pdf",
         reportingPeriod: fmr.fmrYear,
         geography: fmr.fmrArea,
         retrievedAt: now,
         retrievalMethod: "csv_parse",
-        confidence: "high",
+        confidence: isCurrentFiscalYear ? "high" : "medium",
         isDerived: false,
       },
     };
+  }
+
+  // Nationwide fallback: HUD publishes statewide FMR responses containing all
+  // metro and county schedules. Match a municipality when possible; otherwise
+  // use a clearly labelled median of the state's unique HUD schedules.
+  if (hudToken) {
+    const stateResult = await collectStateFmr(geo, hudToken, fetchFn, timeoutMs);
+    if (stateResult) {
+      return {
+        data: stateResult.data,
+        status: stateResult.isEstimate ? "partial" : "ok",
+        source: {
+          sourceKey: "hud_fmr",
+          sourceAgency: "U.S. Department of Housing and Urban Development",
+          datasetName: stateResult.isEstimate
+            ? `${stateResult.data.fmrYear} Fair Market Rents (state planning estimate)`
+            : `HUD ${stateResult.data.fmrYear} Fair Market Rents`,
+          directUrl: `${HUD_API_BASE}/fmr/statedata/${geo.stateAbbr}?year=${new Date().getFullYear()}`,
+          reportingPeriod: stateResult.data.fmrYear,
+          geography: stateResult.data.fmrArea,
+          retrievedAt: now,
+          retrievalMethod: "api",
+          confidence: stateResult.isEstimate ? "medium" : "high",
+          isDerived: stateResult.isEstimate,
+        },
+      };
+    }
   }
 
   return makeNotVerified(

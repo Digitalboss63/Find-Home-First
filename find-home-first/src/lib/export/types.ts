@@ -148,6 +148,12 @@ export interface MarketReportSnapshot {
 
   // Section 6 — Economics
   fmrBenchmarks: { label: string; usd: number }[];  // studio/1BR/2BR/3BR/4BR
+  /** Provenance for the FMR table. Optional for older stored report versions. */
+  fmrContext?: {
+    geography: string;
+    reportingPeriod: string;
+    isEstimate: boolean;
+  };
   economicsScenarios: EconomicsScenario[];
   economicsConclusion: string;
 

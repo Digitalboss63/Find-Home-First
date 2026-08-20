@@ -521,9 +521,14 @@ function PropertyEconomicsSection({ report }: { report: MarketReportSnapshot }) 
       <SectionHeading number="6" title="Property Economics" />
 
       {/* FMR Benchmarks */}
-      <Text style={s.subsectionTitle}>HUD Fair Market Rent Benchmarks (FY2026 — {report.geography.fmrArea ?? report.geography.metro ?? "Metro Area"})</Text>
+      <Text style={s.subsectionTitle}>
+        {report.fmrContext?.isEstimate ? "HUD Fair Market Rent Planning Estimate" : "HUD Fair Market Rent Benchmarks"}
+        {` (${report.fmrContext?.reportingPeriod ?? "FY2026"} — ${report.fmrContext?.geography ?? report.geography.fmrArea ?? report.geography.metro ?? "Area"})`}
+      </Text>
       <Text style={[s.bodySmall, { marginBottom: 6 }]}>
-        ⚠ FMR is a market benchmark only. It is not a guaranteed payment per room. Confirm actual payment standard with the program administrator.
+        {report.fmrContext?.isEstimate
+          ? "⚠ This is a statewide HUD planning estimate because an exact municipality match was unavailable. Confirm the exact local FMR area and program payment standard."
+          : "⚠ FMR is a market benchmark only. It is not a guaranteed payment per room. Confirm actual payment standard with the program administrator."}
       </Text>
       <View style={{ flexDirection: "row", marginBottom: 10 }}>
         {report.fmrBenchmarks.map((b) => (

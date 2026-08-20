@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { collectCensusAcs, _clearCensusPlaceCacheForTesting } from "../market-intelligence/collectors/census";
 import { collectHudPit } from "../market-intelligence/collectors/hud-pit";
+import { collectHudFmr } from "../market-intelligence/collectors/hud-fmr";
 import { collectVaPrograms } from "../market-intelligence/collectors/va-programs";
 import { resolveGeography } from "../market-intelligence/geo-resolver";
+import { buildReport } from "../market-intelligence/report-builder";
 import { scoreMarket } from "../market-intelligence/scoring";
 import type {
   ChasData,
@@ -34,7 +36,7 @@ const result = <T>(sourceKey: string, data: T | null): CollectorResult<T> => ({
   source: source(sourceKey),
 });
 
-function collectedWithHousingEvidence(options: { povertyRatePct?: number | null; includePit?: boolean } = {}): CollectedData {
+function collectedWithHousingEvidence(options: { povertyRatePct?: number | null; includePit?: boolean; includeFmr?: boolean } = {}): CollectedData {
   const geo = resolveGeography("Milwaukee, WI");
   return {
     geo,
@@ -56,7 +58,7 @@ function collectedWithHousingEvidence(options: { povertyRatePct?: number | null;
       povertyRatePct: options.povertyRatePct,
       acsVintage: "ACS 2024 5-year",
     }),
-    fmr: result("hud_fmr", {
+    fmr: result("hud_fmr", options.includeFmr === false ? null : {
       studio: 900,
       oneBr: 1050,
       twoBr: 1300,
@@ -113,6 +115,25 @@ describe("Philadelphia major-city coverage", () => {
     });
     expect(pit.source.directUrl).toContain("CoC_PopSub_CoC_PA-500-2025");
     expect(JSON.stringify(pit)).not.toContain("unused-test-token");
+  });
+
+  it("returns official FY2026 Philadelphia FMR benchmarks without a network call", async () => {
+    const fetchFn = vi.fn();
+    const fmr = await collectHudFmr(resolveGeography("Philadelphia, PA"), {
+      fetchFn: fetchFn as unknown as typeof fetch,
+      hudToken: undefined,
+    });
+
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(fmr.status).toBe("ok");
+    expect(fmr.data).toMatchObject({
+      studio: 1397,
+      oneBr: 1520,
+      twoBr: 1810,
+      threeBr: 2170,
+      fourBr: 2423,
+      fmrYear: "FY2026",
+    });
   });
 
   it("includes Philadelphia-specific VA and CoC program contacts", () => {
@@ -213,5 +234,62 @@ describe("honest fallback scoring", () => {
     expect(scored.verdict).toBe("Insufficient Evidence");
     expect(scored.overallScore).toBeNull();
     expect(scored.verdictExplanation).toContain("will not guess");
+  });
+
+  it("tells the user to retry automatic HUD collection instead of collecting FMR manually", () => {
+    const collected = collectedWithHousingEvidence({
+      povertyRatePct: 0.22,
+      includeFmr: false,
+    });
+    const scored = scoreMarket(collected);
+    const report = buildReport(
+      "report-id",
+      "project-id",
+      "Milwaukee placement",
+      "Veterans",
+      collected,
+      scored,
+      1,
+    );
+
+    expect(report.economicsConclusion).toContain("retry the automatic HUD collection");
+    expect(report.economicsConclusion).not.toContain("Collect FMR benchmarks");
+    expect(report.economicsConclusion).toContain("program-specific per-room payment standard");
+  });
+
+  it("labels a statewide FMR fallback as an estimate throughout scoring and reporting", () => {
+    const collected = collectedWithHousingEvidence({ povertyRatePct: 0.22 });
+    collected.fmr.status = "partial";
+    collected.fmr.source = {
+      ...collected.fmr.source,
+      datasetName: "FY2026 Fair Market Rents (state planning estimate)",
+      geography: "WI statewide HUD FMR median estimate for Smalltown",
+      reportingPeriod: "FY2026",
+      confidence: "medium",
+      isDerived: true,
+    };
+    const scored = scoreMarket(collected);
+    const propertyScore = scored.scorecard.find((item) => item.key === "property_availability");
+    const report = buildReport(
+      "report-id",
+      "project-id",
+      "Smalltown placement",
+      "Veterans",
+      collected,
+      scored,
+      1,
+    );
+
+    expect(scored.confidence).toBe("low");
+    expect(propertyScore?.numericScore).toBe(50);
+    expect(propertyScore?.reason).toContain("Statewide HUD FMR median estimate");
+    expect(propertyScore?.missingEvidence).toContain("Exact local FMR area");
+    expect(report.fmrContext).toEqual({
+      geography: "WI statewide HUD FMR median estimate for Smalltown",
+      reportingPeriod: "FY2026",
+      isEstimate: true,
+    });
+    expect(report.economicsConclusion).toContain("Planning estimate only");
+    expect(report.economicsConclusion).toContain("exact municipality match was unavailable");
   });
 });

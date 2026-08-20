@@ -317,7 +317,9 @@ function buildEconomicsSheet(wb: ExcelJS.Workbook, input: ExportInput): void {
   applyHeaderRow(headerRow, cols.length);
 
   // FMR benchmarks above table
-  ws.insertRow(1, ["FMR Benchmarks (FY2026 — market benchmark only, NOT guaranteed revenue)"]);
+  ws.insertRow(1, [report.fmrContext?.isEstimate
+    ? `HUD FMR Planning Estimate (${report.fmrContext.reportingPeriod} — ${report.fmrContext.geography}; confirm exact local FMR)`
+    : `FMR Benchmarks (${report.fmrContext?.reportingPeriod ?? "FY2026"} — market benchmark only, NOT guaranteed revenue)`]);
   ws.getRow(1).font = { bold: true, size: 10, color: { argb: BRAND_WARNING } };
   ws.getRow(1).height = 22;
 

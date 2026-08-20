@@ -84,14 +84,19 @@ function scoreProgramFunding(data: CollectedData): ScorecardItem {
   const programs = data.vaPrograms.data?.programs ?? [];
   const bestImmediate = programs.filter((p) => p.fitRank === "Best Immediate").length;
   const hasFmr = data.fmr.data !== null;
+  const fmrIsEstimate = data.fmr.source.isDerived;
   let score = 45;
   let reason = "Program funding fit pending local verification";
   let missingEvidence: string | null = null;
 
   if (bestImmediate >= 2 && hasFmr) {
-    score = 68;
-    reason = `${bestImmediate} best-immediate programs (${programs.filter(p => p.fitRank === "Best Immediate").map(p => p.programName).join(", ")}); FMR ${data.fmr.data ? "$" + data.fmr.data.fourBr.toLocaleString() : "unknown"} (4BR) provides headroom`;
-    missingEvidence = "Local shared-housing rules not yet confirmed";
+    score = fmrIsEstimate ? 58 : 68;
+    reason = fmrIsEstimate
+      ? `${bestImmediate} best-immediate programs; statewide HUD FMR planning estimate $${data.fmr.data!.fourBr.toLocaleString()} (4BR), exact local benchmark pending`
+      : `${bestImmediate} best-immediate programs (${programs.filter(p => p.fitRank === "Best Immediate").map(p => p.programName).join(", ")}); FMR $${data.fmr.data!.fourBr.toLocaleString()} (4BR) provides headroom`;
+    missingEvidence = fmrIsEstimate
+      ? "Exact local FMR area and local shared-housing rules not yet confirmed"
+      : "Local shared-housing rules not yet confirmed";
   } else if (bestImmediate >= 1) {
     score = 52;
     reason = `${bestImmediate} best-immediate program available; local verification pending`;
@@ -103,16 +108,23 @@ function scoreProgramFunding(data: CollectedData): ScorecardItem {
 
 function scorePropertyAvailability(data: CollectedData): ScorecardItem {
   const fmr = data.fmr.data;
+  const fmrIsEstimate = data.fmr.source.isDerived;
   const rc = data.rentcast.data;
   let score = 50;
   let reason = "Property availability pending local market research";
-  const missingEvidence = rc === null ? "RentCast market data not available — local inventory not confirmed" : null;
+  const missingEvidence = fmrIsEstimate
+    ? "Exact local FMR area not confirmed"
+    : rc === null
+      ? "RentCast market data not available — local inventory not confirmed"
+      : null;
 
   if (fmr) {
-    reason = `FMR $${fmr.fourBr.toLocaleString()} (4BR) provides market benchmark`;
-    score = 60;
+    reason = fmrIsEstimate
+      ? `Statewide HUD FMR median estimate $${fmr.fourBr.toLocaleString()} (4BR); exact local benchmark pending`
+      : `FMR $${fmr.fourBr.toLocaleString()} (4BR) provides market benchmark`;
+    score = fmrIsEstimate ? 50 : 60;
   }
-  if (rc && rc.medianRent !== null && fmr) {
+  if (rc && rc.medianRent !== null && fmr && !fmrIsEstimate) {
     const headroom = fmr.fourBr - rc.medianRent;
     if (headroom > 500) { score = 72; reason = `FMR $${fmr.fourBr.toLocaleString()} (4BR) provides $${headroom.toFixed(0)} headroom over median rent $${rc.medianRent.toLocaleString()}`; }
     else if (headroom > 0) { score = 58; reason = `FMR $${fmr.fourBr.toLocaleString()} slightly above median rent $${rc.medianRent.toLocaleString()}`; }
