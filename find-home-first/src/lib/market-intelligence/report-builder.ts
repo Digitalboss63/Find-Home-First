@@ -117,6 +117,13 @@ export function buildReport(
         { label: "4 Bedrooms", usd: data.fmr.data.fourBr },
       ]
     : [];
+  const fmrContext = data.fmr.data
+    ? {
+        geography: data.fmr.source.geography,
+        reportingPeriod: data.fmr.source.reportingPeriod,
+        isEstimate: data.fmr.source.isDerived,
+      }
+    : undefined;
 
   // ── Economics scenarios ──────────────────────────────────────────────────────
   const fmr4br = data.fmr.data?.fourBr ?? null;
@@ -138,9 +145,11 @@ export function buildReport(
     assumptionStatus: "Not Verified",
   });
   const economicsScenarios: EconomicsScenario[] = [makeScenario("Conservative", 70), makeScenario("Expected", 80), makeScenario("Strong", 90)];
-  const economicsConclusion = fmr4br
+  const economicsConclusion = fmr4br && fmrContext?.isEstimate
+    ? `Planning estimate only. HUD's statewide FMR median estimate is $${fmr4br.toLocaleString()} for four bedrooms because an exact municipality match was unavailable. Use it for early screening, not a lease decision. Confirm the exact local FMR area and the program-specific per-room payment standard before final modeling.`
+    : fmr4br
     ? `Potentially viable pending verification. FMR $${fmr4br.toLocaleString()} (4BR) provides potential revenue headroom over typical market rents. Final determination requires a confirmed property address, confirmed payment standard per room, and verified program payment terms.`
-    : "Economics cannot be modeled without FMR data. Collect FMR benchmarks and confirm per-room payment standard with program administrator.";
+    : "HUD FMR was temporarily unavailable during this report run, so the report will not guess at property economics. Use Update Report to retry the automatic HUD collection. A program administrator must still confirm the program-specific per-room payment standard.";
 
   // ── Barriers ────────────────────────────────────────────────────────────────
   const barriers: Barrier[] = [
@@ -158,7 +167,7 @@ export function buildReport(
     { stepNumber: 3, description: "Contact current SSVF grantees from VA provider directory — confirm shared-housing rules and referral availability" },
     { stepNumber: 4, description: "Confirm master-lease or sublease structure with program administrator and housing attorney" },
     { stepNumber: 5, description: "Confirm inspection requirements and room standards before signing any property lease" },
-    { stepNumber: 6, description: fmr4br ? `Search 4+ bedroom rentals using FMR $${fmr4br.toLocaleString()} (4BR) as benchmark` : "Search 4+ bedroom rentals using RentCast data once API key is configured" },
+    { stepNumber: 6, description: fmr4br ? `Search 4+ bedroom rentals using FMR $${fmr4br.toLocaleString()} (4BR) as benchmark` : "Use Update Report to retry automatic HUD FMR collection; continue reviewing current rental listings without treating them as an FMR substitute" },
     { stepNumber: 7, description: "Model complete financials for one candidate property using confirmed payment standard" },
     { stepNumber: 8, description: "Launch one pilot house and complete full referral cycle before expanding" },
   ];
@@ -212,6 +221,7 @@ export function buildReport(
     allDemographics: [],
     programs,
     fmrBenchmarks,
+    fmrContext,
     economicsScenarios,
     economicsConclusion,
     barriers,

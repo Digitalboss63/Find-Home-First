@@ -368,7 +368,15 @@ function Section6Economics({ r }: { r: MarketReportSnapshot }) {
       {/* FMR table */}
       {r.fmrBenchmarks.length > 0 && (
         <>
-          <div style={{ ...sectionH, fontSize: "0.85rem" }}>Fair Market Rents</div>
+          <div style={{ ...sectionH, fontSize: "0.85rem" }}>
+            {r.fmrContext?.isEstimate ? "HUD Fair Market Rent Planning Estimate" : "HUD Fair Market Rents"}
+          </div>
+          {r.fmrContext && (
+            <div style={{ marginBottom: "0.65rem", color: r.fmrContext.isEstimate ? C.warning : C.muted, fontSize: "0.78rem" }}>
+              {r.fmrContext.geography} · {r.fmrContext.reportingPeriod}
+              {r.fmrContext.isEstimate ? " · Area estimate—not an exact local payment standard" : " · Published benchmark—not a guaranteed payment standard"}
+            </div>
+          )}
           <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
             <thead>
               <tr>

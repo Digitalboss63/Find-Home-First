@@ -33,6 +33,18 @@ const UNKNOWN_GEO: GeoContext = {
   phaName: null,
 };
 
+const PHILADELPHIA_GEO: GeoContext = {
+  city: "Philadelphia",
+  stateAbbr: "PA",
+  stateFips: "42",
+  county: "Philadelphia County",
+  metro: "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD MSA",
+  fmrArea: "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD MSA",
+  cocId: "PA-500",
+  cocName: "Philadelphia CoC (PA-500)",
+  phaName: "Philadelphia Housing Authority",
+};
+
 // ─── FMR collector ────────────────────────────────────────────────────────────
 
 describe("collectHudFmr — no token", () => {
@@ -52,6 +64,27 @@ describe("collectHudFmr — no token", () => {
     const result = await collectHudFmr(UNKNOWN_GEO, { hudToken: undefined });
     expect(result.status).toBe("not_verified");
     expect(result.data).toBeNull();
+  });
+
+  it("returns official FY2026 Philadelphia FMRs without a network call", async () => {
+    const fetchFn = vi.fn();
+    const result = await collectHudFmr(PHILADELPHIA_GEO, {
+      fetchFn: fetchFn as unknown as typeof fetch,
+      hudToken: undefined,
+    });
+
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(result.status).toBe("ok");
+    expect(result.data).toEqual({
+      studio: 1397,
+      oneBr: 1520,
+      twoBr: 1810,
+      threeBr: 2170,
+      fourBr: 2423,
+      fmrYear: "FY2026",
+      fmrArea: "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD MSA",
+    });
+    expect(result.source.directUrl).toContain("FY2026_FMR_Schedule.pdf");
   });
 });
 
@@ -129,6 +162,106 @@ describe("collectHudFmr — with mocked token and entity resolution", () => {
       hudToken: "SUPER_SECRET_KEY_12345",
     });
     expect(JSON.stringify(result)).not.toContain("SUPER_SECRET_KEY_12345");
+  });
+
+  it("uses an exact municipality row from statewide HUD data when metro resolution fails", async () => {
+    const actonGeo: GeoContext = {
+      city: "Acton",
+      stateAbbr: "MA",
+      stateFips: "25",
+      county: null,
+      metro: null,
+      fmrArea: null,
+      cocId: null,
+      cocName: null,
+      phaName: null,
+    };
+    const mockFetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("statedata")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            data: {
+              year: "2026",
+              metroareas: [],
+              counties: [{
+                town_name: "Acton town",
+                county_name: "Middlesex County",
+                metro_name: "Boston-Cambridge-Quincy HUD Metro FMR Area",
+                Efficiency: 1800,
+                "One-Bedroom": 2000,
+                "Two-Bedroom": 2400,
+                "Three-Bedroom": 3000,
+                "Four-Bedroom": 3500,
+              }],
+            },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ data: [] }) });
+    });
+
+    const result = await collectHudFmr(actonGeo, {
+      fetchFn: mockFetch as unknown as typeof fetch,
+      hudToken: "test-token-redacted",
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.data?.fmrArea).toBe("Acton town");
+    expect(result.data?.fourBr).toBe(3500);
+    expect(result.source.confidence).toBe("high");
+    expect(JSON.stringify(result)).not.toContain("test-token-redacted");
+  });
+
+  it("uses a clearly labelled statewide HUD median for a small unmatched municipality", async () => {
+    const mockFetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("statedata")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            data: {
+              year: "2026",
+              metroareas: [{
+                name: "Example Metro, KS MSA",
+                Efficiency: 700,
+                "One-Bedroom": 800,
+                "Two-Bedroom": 900,
+                "Three-Bedroom": 1100,
+                "Four-Bedroom": 1300,
+              }],
+              counties: [{
+                county_name: "Example County",
+                Efficiency: 900,
+                "One-Bedroom": 1000,
+                "Two-Bedroom": 1200,
+                "Three-Bedroom": 1500,
+                "Four-Bedroom": 1700,
+              }],
+            },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ data: [] }) });
+    });
+
+    const result = await collectHudFmr(UNKNOWN_GEO, {
+      fetchFn: mockFetch as unknown as typeof fetch,
+      hudToken: "test-token-redacted",
+    });
+
+    expect(result.status).toBe("partial");
+    expect(result.data).toMatchObject({
+      studio: 800,
+      oneBr: 900,
+      twoBr: 1050,
+      threeBr: 1300,
+      fourBr: 1500,
+      fmrYear: "FY2026",
+    });
+    expect(result.data?.fmrArea).toContain("statewide HUD FMR median estimate");
+    expect(result.source.confidence).toBe("medium");
+    expect(result.source.isDerived).toBe(true);
+    expect(JSON.stringify(result)).not.toContain("test-token-redacted");
   });
 });
 

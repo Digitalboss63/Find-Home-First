@@ -273,7 +273,10 @@ export async function buildPdfBuffer(input: ExportInput): Promise<Buffer> {
 
   // 6 - Economics
   section(6, "Property Economics");
-  textBlock("HUD Fair Market Rent Benchmarks", { font: bold, size: 11, color: COLORS.secondary });
+  textBlock(report.fmrContext?.isEstimate ? "HUD Fair Market Rent Planning Estimate" : "HUD Fair Market Rent Benchmarks", { font: bold, size: 11, color: COLORS.secondary });
+  if (report.fmrContext) {
+    textBlock(`${report.fmrContext.geography}; ${report.fmrContext.reportingPeriod}; ${report.fmrContext.isEstimate ? "area estimate — confirm exact local FMR" : "published benchmark — not a guaranteed payment standard"}`, { size: 8.5, color: COLORS.muted });
+  }
   for (const benchmark of report.fmrBenchmarks) textBlock(`${benchmark.label}: ${money(benchmark.usd)}`, { indent: 10, gapAfter: 2 });
   y -= 8;
   for (const scenario of report.economicsScenarios) {
