@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import SkipLink from "@/components/SkipLink";
 import AppShell from "@/components/AppShell";
 import AdaWidgetInjector from "@/components/AdaWidgetInjector";
+import RouteBackButton from "@/components/RouteBackButton";
 import { getPlatformSetting } from "@/lib/repository";
 import { isPlatformOwner } from "@/lib/auth";
 
@@ -48,7 +50,12 @@ export default async function RootLayout({
       <body className="min-h-screen">
         <ClerkProvider>
           <SkipLink />
-          <AppShell showBackOffice={platformOwner}>{children}</AppShell>
+          <AppShell showBackOffice={platformOwner}>
+            <Suspense fallback={null}>
+              <RouteBackButton />
+            </Suspense>
+            {children}
+          </AppShell>
           {/* ADA widget — renders only when platform owner has enabled it. */}
           {adaCode && <AdaWidgetInjector code={adaCode} />}
         </ClerkProvider>
