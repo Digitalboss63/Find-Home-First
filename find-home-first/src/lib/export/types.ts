@@ -166,6 +166,33 @@ export interface MarketReportSnapshot {
 
   // Section 9 — Sources
   sources: ReportSource[];
+
+  /** ZIP/metro opportunity rankings from the Property Opportunity Engine V1. */
+  opportunityRankings?: ZipOpportunityRanking[];
+}
+
+// ─── Property Opportunity Engine V1 ──────────────────────────────────────────
+
+export interface ZipOpportunityRanking {
+  zipCode: string;
+  rank: number;
+  label: string;
+  veteranNeedIndex: number;
+  veteranNeedScore: number;
+  placementInfraIndex: number;
+  placementInfraScore: number;
+  housingEconomicsIndex: number;
+  housingEconomicsScore: number;
+  propertyAvailIndex: number;
+  propertyAvailScore: number;
+  opportunityScore: number;
+  priorityLevel: "PRIORITY" | "STRONG" | "WATCH" | "LOW";
+  confidenceLevel: "HIGH" | "MEDIUM" | "ESTIMATED";
+  isEstimated: boolean;
+  sourceGeography: string;
+  sourceGeographyType: string;
+  recommendation: string;
+  calculationVersion: string;
 }
 
 // ─── Export input ─────────────────────────────────────────────────────────────
