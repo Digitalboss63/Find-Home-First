@@ -42,6 +42,7 @@ export interface LeadWorkspaceView {
   owner: OwnerContactView | null;
   activities: LeadActivityView[];
   followUpTask: FollowUpTaskView | null;
+  activeShowing: ActiveShowingView | null;
 }
 
 export interface LeadDetailView {
@@ -150,7 +151,9 @@ export async function getLeadWorkspace(
       owner = await _getOwnerContact(db, lead.ownerId, organizationId);
     }
 
-    return { lead, owner, activities: acts, followUpTask: task };
+    const activeShowing = await getActiveShowing(leadId, organizationId);
+
+    return { lead, owner, activities: acts, followUpTask: task, activeShowing };
   } catch {
     console.warn("[repository-leads] getLeadWorkspace failed");
     return null;
@@ -837,5 +840,195 @@ export async function resolveActorUserId(
     return rows[0]?.id ?? null;
   } catch {
     return null;
+  }
+}
+
+// ─── Showing helpers ──────────────────────────────────────────────────────────
+//
+// Showings are stored as lead activities (activityType = "showing_*").
+// No schema change needed — activityType is a free-form text column.
+// Showing-related activityType values:
+//   "showing_scheduled"   — initial scheduling
+//   "showing_rescheduled" — rescheduled (keeps same task, updates date)
+//   "showing_completed"   — outcome recorded
+//   "showing_cancelled"   — cancelled, needs reschedule
+//
+// Structured data storage convention:
+//   showing_scheduled / showing_rescheduled: notes = JSON of ShowingData
+//   showing_completed: outcome = outcome key (e.g. "good_fit"), notes = user text
+//   showing_cancelled: notes = user text (plain)
+//
+// Current showing state is derived from the most recent showing-type activity.
+
+export interface ShowingData {
+  date: string;       // YYYY-MM-DD
+  time: string;       // e.g. "10:00 AM"
+  location: string;   // meeting location / property address
+  ownerName: string;  // owner / contact name
+  userNotes: string | null;
+}
+
+export interface ActiveShowingView {
+  activityId: string;
+  /** "showing_scheduled" | "showing_rescheduled" | "showing_completed" | "showing_cancelled" */
+  activityType: string;
+  /** Populated for showing_scheduled / showing_rescheduled */
+  showingData: ShowingData | null;
+  /** Populated for showing_completed — the outcome key (e.g. "good_fit") */
+  outcomeKey: string | null;
+  /** Free-form user notes (plain text, not JSON) */
+  userNotes: string | null;
+  createdAt: Date;
+}
+
+/**
+ * Returns the most recent showing-related activity for a lead,
+ * which defines the current showing state. Returns null if none exist.
+ */
+export async function getActiveShowing(
+  leadId: string,
+  organizationId: string
+): Promise<ActiveShowingView | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    const rows = await db
+      .select({
+        id: propertyLeadActivities.id,
+        activityType: propertyLeadActivities.activityType,
+        notes: propertyLeadActivities.notes,
+        outcome: propertyLeadActivities.outcome,
+        createdAt: propertyLeadActivities.createdAt,
+      })
+      .from(propertyLeadActivities)
+      .where(
+        and(
+          eq(propertyLeadActivities.leadId, leadId),
+          eq(propertyLeadActivities.organizationId, organizationId),
+          sql`${propertyLeadActivities.activityType} IN ('showing_scheduled','showing_rescheduled','showing_completed','showing_cancelled')`
+        )
+      )
+      .orderBy(desc(propertyLeadActivities.createdAt))
+      .limit(1);
+
+    if (rows.length === 0) return null;
+    const r = rows[0];
+
+    let showingData: ShowingData | null = null;
+    if (
+      r.activityType === "showing_scheduled" ||
+      r.activityType === "showing_rescheduled"
+    ) {
+      try {
+        if (r.notes) showingData = JSON.parse(r.notes) as ShowingData;
+      } catch {
+        // malformed JSON — treat as no structured data
+      }
+    }
+
+    return {
+      activityId: r.id,
+      activityType: r.activityType,
+      showingData,
+      outcomeKey: r.activityType === "showing_completed" ? (r.outcome ?? null) : null,
+      userNotes:
+        r.activityType === "showing_completed" || r.activityType === "showing_cancelled"
+          ? r.notes
+          : null,
+      createdAt: r.createdAt,
+    };
+  } catch {
+    console.warn("[repository-leads] getActiveShowing failed");
+    return null;
+  }
+}
+
+/**
+ * Creates or updates the single active showing task for a lead.
+ * Idempotent: finds existing open "Showing:" task for this lead and updates it.
+ * Rescheduling calls this again — the due date is updated, no duplicate created.
+ */
+export async function createOrUpdateShowingTask(
+  tx: TxOrDb,
+  organizationId: string,
+  projectId: string,
+  leadId: string,
+  dueDate: string,
+  address: string
+): Promise<string | null> {
+  try {
+    const TITLE_PREFIX = "Showing:";
+    const title = `${TITLE_PREFIX} ${address}`.slice(0, 200);
+
+    const existing = await tx
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.organizationId, organizationId),
+          eq(tasks.projectId, projectId),
+          eq(tasks.leadId, leadId),
+          eq(tasks.status, "upcoming"),
+          sql`${tasks.title} LIKE 'Showing:%'`
+        )
+      )
+      .limit(1);
+
+    const now = new Date();
+    if (existing.length > 0) {
+      await tx
+        .update(tasks)
+        .set({ dueDate, title, updatedAt: now })
+        .where(eq(tasks.id, existing[0].id));
+      return existing[0].id;
+    }
+
+    const inserted = await tx
+      .insert(tasks)
+      .values({
+        organizationId,
+        projectId,
+        leadId,
+        title,
+        description: `Property showing scheduled at ${address}`,
+        dueDate,
+        status: "upcoming",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning({ id: tasks.id });
+    return inserted[0]?.id ?? null;
+  } catch (err) {
+    console.warn("[repository-leads] createOrUpdateShowingTask failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Marks any open showing task for a lead as completed.
+ * Called when a showing is completed or cancelled.
+ */
+export async function resolveShowingTask(
+  tx: TxOrDb,
+  organizationId: string,
+  projectId: string,
+  leadId: string
+): Promise<void> {
+  try {
+    const now = new Date();
+    await tx
+      .update(tasks)
+      .set({ status: "completed", completedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(tasks.organizationId, organizationId),
+          eq(tasks.projectId, projectId),
+          eq(tasks.leadId, leadId),
+          eq(tasks.status, "upcoming"),
+          sql`${tasks.title} LIKE 'Showing:%'`
+        )
+      );
+  } catch (err) {
+    console.warn("[repository-leads] resolveShowingTask failed:", err);
   }
 }

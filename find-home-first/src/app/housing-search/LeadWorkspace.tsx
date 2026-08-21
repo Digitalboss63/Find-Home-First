@@ -17,7 +17,7 @@
  * All five server actions are wired to real controls.
  */
 
-import { useState, useTransition, useCallback } from "react";
+import { useState, useTransition, useCallback, useEffect } from "react";
 import {
   PLAYBOOK_VERSION,
   openingScript,
@@ -39,7 +39,12 @@ import {
   updateNegotiationAction,
   updateOwnerContactAction,
   securePropertyAction,
+  scheduleShowingAction,
+  cancelShowingAction,
+  completeShowingAction,
+  getShowingStateAction,
 } from "./lead-actions";
+import type { ActiveShowingView, ShowingData } from "@/lib/repository-leads";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,6 +84,9 @@ export interface FollowUpTask {
   dueDate: string | null;
   status: string;
 }
+
+// Re-export so PropertySearchClient can pass these without importing server-only module.
+export type { ActiveShowingView, ShowingData };
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
@@ -160,13 +168,19 @@ function formatDate(d: Date | string | null): string {
 }
 
 function activityTypeLabel(t: string): string {
-  return {
-    outreach: "📞 Outreach",
-    stage_change: "🔀 Stage Change",
-    note: "📝 Note",
-    negotiation: "💬 Negotiation",
-    agreement: "✅ Agreement",
-  }[t] ?? t;
+  return (
+    ({
+      outreach: "📞 Outreach",
+      stage_change: "🔀 Stage Change",
+      note: "📝 Note",
+      negotiation: "💬 Negotiation",
+      agreement: "✅ Agreement",
+      showing_scheduled: "📅 Showing Scheduled",
+      showing_rescheduled: "🔄 Showing Rescheduled",
+      showing_completed: "🏠 Showing Completed",
+      showing_cancelled: "❌ Showing Cancelled",
+    } as Record<string, string>)[t] ?? t
+  );
 }
 
 // ─── Property Summary ─────────────────────────────────────────────────────────
@@ -1124,6 +1138,517 @@ function OwnerOutreachPlaybookSection() {
   );
 }
 
+// ─── Showing Section ──────────────────────────────────────────────────────────
+
+const SHOWING_OUTCOME_OPTIONS = [
+  { key: "good_fit", label: "Good Fit — Move Forward" },
+  { key: "needs_follow_up", label: "Needs Follow-up" },
+  { key: "not_suitable", label: "Property Not Suitable" },
+  { key: "owner_not_moving_forward", label: "Owner Not Moving Forward" },
+] as const;
+
+type ShowingOutcomeKey = (typeof SHOWING_OUTCOME_OPTIONS)[number]["key"];
+
+function ShowingScheduledView({
+  showingData,
+  isRescheduled,
+  lead,
+  projectId,
+  onReschedule,
+  onCancel,
+  onComplete,
+}: {
+  showingData: ShowingData;
+  isRescheduled: boolean;
+  lead: PropertyLeadView;
+  projectId: string;
+  onReschedule: () => void;
+  onCancel: () => void;
+  onComplete: (outcome: ShowingOutcomeKey, notes: string, advanceTo: string | null) => void;
+}) {
+  const [completingMode, setCompletingMode] = useState(false);
+  const [outcomeKey, setOutcomeKey] = useState<ShowingOutcomeKey>("good_fit");
+  const [outcomeNotes, setOutcomeNotes] = useState("");
+  const [completeMsg, setCompleteMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [, startTx] = useTransition();
+
+  // Determine stage advance recommendation per outcome
+  function recommendedStage(key: ShowingOutcomeKey): string | null {
+    if (key === "good_fit") return isTransitionPermitted(lead.acquisitionStage, "negotiating") ? "negotiating" : null;
+    if (key === "needs_follow_up") return isTransitionPermitted(lead.acquisitionStage, "follow_up") ? "follow_up" : null;
+    if (key === "owner_not_moving_forward") return isTransitionPermitted(lead.acquisitionStage, "not_interested") ? "not_interested" : null;
+    return null; // not_suitable — no automatic stage change
+  }
+
+  const recommended = recommendedStage(outcomeKey);
+
+  function handleComplete(e: React.FormEvent) {
+    e.preventDefault();
+    startTx(async () => {
+      setCompleteMsg(null);
+      const advanceTo = recommended;
+      const result = await completeShowingAction({
+        projectId,
+        leadId: lead.id,
+        outcomeKey,
+        notes: outcomeNotes || null,
+        advanceTo,
+      });
+      setCompleteMsg({
+        ok: result.ok,
+        text: result.ok ? "Showing result recorded." : (result.error ?? "Failed."),
+      });
+      if (result.ok) {
+        onComplete(outcomeKey, outcomeNotes, advanceTo);
+      }
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Showing summary card */}
+      <div
+        className="rounded-lg p-3"
+        style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}
+      >
+        <p className="text-xs font-bold mb-1.5" style={{ color: "#166534" }}>
+          {isRescheduled ? "🔄 Showing Rescheduled" : "📅 Showing Scheduled"}
+        </p>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs" style={{ color: "#166534" }}>
+          <div><span style={fieldLabelStyle}>Date: </span>{formatDate(showingData.date)}</div>
+          <div><span style={fieldLabelStyle}>Time: </span>{showingData.time}</div>
+          <div className="col-span-2"><span style={fieldLabelStyle}>Location: </span>{showingData.location}</div>
+          {showingData.ownerName && (
+            <div className="col-span-2"><span style={fieldLabelStyle}>Owner / Contact: </span>{showingData.ownerName}</div>
+          )}
+          {showingData.userNotes && (
+            <div className="col-span-2"><span style={fieldLabelStyle}>Notes: </span>{showingData.userNotes}</div>
+          )}
+        </div>
+      </div>
+
+      {!completingMode && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setCompletingMode(true)}
+            className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white"
+            style={{ backgroundColor: "var(--color-secondary)", border: "none" }}
+          >
+            🏠 Mark Showing Complete
+          </button>
+          <button
+            type="button"
+            onClick={onReschedule}
+            className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+            style={{ border: "1px solid var(--color-border)", backgroundColor: "#fff", color: "var(--color-secondary)" }}
+          >
+            Reschedule
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+            style={{ border: "1px solid #FECDD3", backgroundColor: "#FFF1F2", color: "#BE123C" }}
+          >
+            Cancel Showing
+          </button>
+        </div>
+      )}
+
+      {completingMode && (
+        <form onSubmit={handleComplete} className="space-y-2">
+          <p className="text-xs font-semibold" style={{ color: "var(--color-primary)" }}>
+            Record Showing Result
+          </p>
+          <div>
+            <label className="block text-xs font-medium mb-0.5">Result</label>
+            <select
+              value={outcomeKey}
+              onChange={(e) => setOutcomeKey(e.target.value as ShowingOutcomeKey)}
+              style={inlineInputStyle}
+            >
+              {SHOWING_OUTCOME_OPTIONS.map((o) => (
+                <option key={o.key} value={o.key}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {outcomeKey === "not_suitable" && (
+            <div
+              className="text-xs rounded px-2 py-1.5"
+              style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E" }}
+              role="note"
+            >
+              ℹ️ <strong>Property Not Suitable</strong> records the issue with this specific property — not the owner. The lead stage will not change automatically.
+            </div>
+          )}
+
+          {recommended && (
+            <div
+              className="text-xs rounded px-2 py-1.5"
+              style={{ backgroundColor: "var(--color-surface-soft)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}
+              role="note"
+            >
+              Recommended next stage: <strong>{PIPELINE_STAGE_LABELS[recommended] ?? recommended}</strong>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium mb-0.5">Notes (optional)</label>
+            <textarea
+              rows={2}
+              value={outcomeNotes}
+              onChange={(e) => setOutcomeNotes(e.target.value)}
+              placeholder="Additional context about the showing…"
+              style={{ ...inlineInputStyle, resize: "vertical" }}
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              className="text-xs px-3 py-1 rounded-lg font-semibold text-white"
+              style={{ backgroundColor: "var(--color-action)", border: "none" }}
+            >
+              Confirm Result
+            </button>
+            <button
+              type="button"
+              onClick={() => { setCompletingMode(false); setCompleteMsg(null); }}
+              className="text-xs px-3 py-1 rounded-lg font-semibold"
+              style={{ border: "1px solid var(--color-border)", backgroundColor: "#fff", color: "var(--color-text)" }}
+            >
+              Back
+            </button>
+          </div>
+          <StatusMsg msg={completeMsg} />
+        </form>
+      )}
+    </div>
+  );
+}
+
+function ShowingSection({
+  lead,
+  projectId,
+  owner,
+  initialShowing,
+  onStageChange,
+  onActivityAdded,
+}: {
+  lead: PropertyLeadView;
+  projectId: string;
+  owner: OwnerContact | null;
+  initialShowing: ActiveShowingView | null;
+  onStageChange: (leadId: string, newStage: string) => void;
+  onActivityAdded: () => void;
+}) {
+  // Derive current showing state from the most recent showing activity.
+  const [showingState, setShowingState] = useState<ActiveShowingView | null>(initialShowing);
+  const [schedulingMode, setSchedulingMode] = useState(false);
+
+  // Form state
+  const [showDate, setShowDate] = useState("");
+  const [showTime, setShowTime] = useState("");
+  const [showLocation, setShowLocation] = useState(lead.address);
+  const [showOwnerName, setShowOwnerName] = useState(owner?.name ?? "");
+  const [showNotes, setShowNotes] = useState("");
+  const [scheduleMsg, setScheduleMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [cancelMsg, setCancelMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [, startTx] = useTransition();
+
+  const currentType = showingState?.activityType ?? null;
+  const hasActiveShowing =
+    currentType === "showing_scheduled" || currentType === "showing_rescheduled";
+  const isCompleted = currentType === "showing_completed";
+  const isCancelled = currentType === "showing_cancelled";
+  const isReschedule = hasActiveShowing && schedulingMode;
+
+  function openScheduleForm(prefillFromExisting?: ShowingData | null) {
+    if (prefillFromExisting) {
+      setShowDate(prefillFromExisting.date);
+      setShowTime(prefillFromExisting.time);
+      setShowLocation(prefillFromExisting.location);
+      setShowOwnerName(prefillFromExisting.ownerName);
+      setShowNotes(prefillFromExisting.userNotes ?? "");
+    } else {
+      setShowDate("");
+      setShowTime("");
+      setShowLocation(lead.address);
+      setShowOwnerName(owner?.name ?? "");
+      setShowNotes("");
+    }
+    setScheduleMsg(null);
+    setSchedulingMode(true);
+  }
+
+  function handleScheduleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    startTx(async () => {
+      setScheduleMsg(null);
+      const result = await scheduleShowingAction({
+        projectId,
+        leadId: lead.id,
+        date: showDate,
+        time: showTime,
+        location: showLocation,
+        ownerName: showOwnerName,
+        userNotes: showNotes || null,
+        isReschedule: isReschedule,
+      });
+      if (result.ok) {
+        const newShowing: ActiveShowingView = {
+          activityId: `optimistic-${Date.now()}`,
+          activityType: isReschedule ? "showing_rescheduled" : "showing_scheduled",
+          showingData: { date: showDate, time: showTime, location: showLocation, ownerName: showOwnerName, userNotes: showNotes || null },
+          outcomeKey: null,
+          userNotes: null,
+          createdAt: new Date(),
+        };
+        setShowingState(newShowing);
+        setSchedulingMode(false);
+        setScheduleMsg(null);
+        onActivityAdded();
+      } else {
+        setScheduleMsg({ ok: false, text: result.error ?? "Failed to schedule." });
+      }
+    });
+  }
+
+  function handleCancel() {
+    startTx(async () => {
+      setCancelMsg(null);
+      const result = await cancelShowingAction({ projectId, leadId: lead.id, notes: null });
+      if (result.ok) {
+        const cancelled: ActiveShowingView = {
+          activityId: `optimistic-cancel-${Date.now()}`,
+          activityType: "showing_cancelled",
+          showingData: null,
+          outcomeKey: null,
+          userNotes: null,
+          createdAt: new Date(),
+        };
+        setShowingState(cancelled);
+        onActivityAdded();
+      } else {
+        setCancelMsg({ ok: false, text: result.error ?? "Failed." });
+      }
+    });
+  }
+
+  function handleComplete(outcomeKey: ShowingOutcomeKey, _notes: string, advanceTo: string | null) {
+    const completed: ActiveShowingView = {
+      activityId: `optimistic-done-${Date.now()}`,
+      activityType: "showing_completed",
+      showingData: null,
+      outcomeKey,
+      userNotes: _notes || null,
+      createdAt: new Date(),
+    };
+    setShowingState(completed);
+    if (advanceTo) onStageChange(lead.id, advanceTo);
+    onActivityAdded();
+  }
+
+  const isInterested = lead.acquisitionStage === "interested";
+  const showSchedulePrompt = isInterested && !hasActiveShowing && !isCompleted && !schedulingMode;
+
+  return (
+    <SectionCard title="Property Showing">
+      {/* Prompt: Interested + no showing yet */}
+      {showSchedulePrompt && (
+        <div className="space-y-2">
+          <div
+            className="rounded-lg px-3 py-2.5"
+            style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}
+          >
+            <p className="text-xs font-semibold mb-0.5" style={{ color: "#1D4ED8" }}>
+              Owner is interested — ready to schedule a showing?
+            </p>
+            <p className="text-xs" style={{ color: "#3B82F6" }}>
+              Scheduling a showing is the logical next step. It will be logged in the activity timeline and create a task reminder.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => openScheduleForm(null)}
+            className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white"
+            style={{ backgroundColor: "var(--color-action)", border: "none" }}
+          >
+            📅 Schedule Showing
+          </button>
+        </div>
+      )}
+
+      {/* Schedule form (new or reschedule) */}
+      {schedulingMode && (
+        <form onSubmit={handleScheduleSubmit} className="space-y-2">
+          <p className="text-xs font-semibold mb-1" style={{ color: "var(--color-primary)" }}>
+            {isReschedule ? "Reschedule Showing" : "Schedule Property Showing"}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs font-medium mb-0.5" htmlFor="show-date">
+                Showing date <span aria-hidden="true">*</span>
+              </label>
+              <input
+                id="show-date"
+                type="date"
+                required
+                value={showDate}
+                onChange={(e) => setShowDate(e.target.value)}
+                style={inlineInputStyle}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-0.5" htmlFor="show-time">
+                Showing time <span aria-hidden="true">*</span>
+              </label>
+              <input
+                id="show-time"
+                type="text"
+                required
+                placeholder="e.g. 10:00 AM"
+                value={showTime}
+                onChange={(e) => setShowTime(e.target.value)}
+                style={inlineInputStyle}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-0.5" htmlFor="show-location">
+              Meeting location / property address <span aria-hidden="true">*</span>
+            </label>
+            <input
+              id="show-location"
+              type="text"
+              required
+              value={showLocation}
+              onChange={(e) => setShowLocation(e.target.value)}
+              style={inlineInputStyle}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-0.5" htmlFor="show-owner">
+              Owner / contact name
+            </label>
+            <input
+              id="show-owner"
+              type="text"
+              value={showOwnerName}
+              onChange={(e) => setShowOwnerName(e.target.value)}
+              placeholder="Pre-filled from linked owner"
+              style={inlineInputStyle}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-0.5" htmlFor="show-notes">
+              Notes (optional)
+            </label>
+            <textarea
+              id="show-notes"
+              rows={2}
+              value={showNotes}
+              onChange={(e) => setShowNotes(e.target.value)}
+              style={{ ...inlineInputStyle, resize: "vertical" }}
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              className="text-xs px-3 py-1 rounded-lg font-semibold text-white"
+              style={{ backgroundColor: "var(--color-action)", border: "none" }}
+            >
+              {isReschedule ? "Confirm Reschedule" : "Schedule Showing"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setSchedulingMode(false); setScheduleMsg(null); }}
+              className="text-xs px-3 py-1 rounded-lg font-semibold"
+              style={{ border: "1px solid var(--color-border)", backgroundColor: "#fff", color: "var(--color-text)" }}
+            >
+              Cancel
+            </button>
+          </div>
+          <StatusMsg msg={scheduleMsg} />
+        </form>
+      )}
+
+      {/* Active showing display */}
+      {hasActiveShowing && !schedulingMode && showingState?.showingData && (
+        <ShowingScheduledView
+          showingData={showingState.showingData}
+          isRescheduled={currentType === "showing_rescheduled"}
+          lead={lead}
+          projectId={projectId}
+          onReschedule={() => openScheduleForm(showingState.showingData)}
+          onCancel={handleCancel}
+          onComplete={handleComplete}
+        />
+      )}
+
+      {/* Cancelled state */}
+      {isCancelled && !schedulingMode && (
+        <div className="space-y-2">
+          <div
+            className="rounded px-2 py-1.5 text-xs"
+            style={{ backgroundColor: "#FFF1F2", border: "1px solid #FECDD3", color: "#9F1239" }}
+          >
+            ❌ Showing cancelled — reschedule or record a new showing when ready.
+          </div>
+          <button
+            type="button"
+            onClick={() => openScheduleForm(null)}
+            className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+            style={{ border: "1px solid var(--color-border)", backgroundColor: "#fff", color: "var(--color-secondary)" }}
+          >
+            📅 Schedule New Showing
+          </button>
+          <StatusMsg msg={cancelMsg} />
+        </div>
+      )}
+
+      {/* Completed state */}
+      {isCompleted && !schedulingMode && (
+        <div className="space-y-2">
+          <div
+            className="rounded px-2 py-1.5 text-xs"
+            style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534" }}
+          >
+            🏠 Showing completed — see activity timeline for the recorded result.
+          </div>
+          <button
+            type="button"
+            onClick={() => openScheduleForm(null)}
+            className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+            style={{ border: "1px solid var(--color-border)", backgroundColor: "#fff", color: "var(--color-secondary)" }}
+          >
+            📅 Schedule Another Showing
+          </button>
+        </div>
+      )}
+
+      {/* No showing scheduled and not in a special state — low-prominence prompt */}
+      {!isInterested && !hasActiveShowing && !isCompleted && !isCancelled && !schedulingMode && !TERMINAL_STAGES.has(lead.acquisitionStage) && (
+        <div className="space-y-2">
+          <p className="text-xs" style={{ color: "var(--color-text)", opacity: 0.55 }}>
+            No showing scheduled. Schedule a property showing to record a meeting with the owner.
+          </p>
+          <button
+            type="button"
+            onClick={() => openScheduleForm(null)}
+            className="text-xs px-2 py-1 rounded font-semibold"
+            style={{ border: "1px solid var(--color-border)", backgroundColor: "#fff", color: "var(--color-secondary)" }}
+          >
+            📅 Schedule Showing
+          </button>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 // ─── LeadWorkspace (main export) ─────────────────────────────────────────────
 
 export interface LeadWorkspaceProps {
@@ -1143,6 +1668,7 @@ export interface LeadWorkspaceProps {
   initialOwner?: OwnerContact | null;
   initialActivities?: ActivityItem[];
   initialFollowUpTask?: FollowUpTask | null;
+  initialShowing?: ActiveShowingView | null;
   onStageChange: (leadId: string, newStage: string) => void;
 }
 
@@ -1151,21 +1677,40 @@ export function LeadWorkspace({
   projectId,
   initialOwner = null,
   initialActivities = [],
+  initialShowing = null,
   onStageChange,
 }: LeadWorkspaceProps) {
   const [activities, setActivities] = useState<ActivityItem[]>(initialActivities);
   const [owner] = useState<OwnerContact | null>(initialOwner);
+  // Load showing state on mount (from server). initialShowing may be null when
+  // the workspace is opened without a pre-fetch; the server action fills it in.
+  const [loadedShowing, setLoadedShowing] = useState<ActiveShowingView | null>(initialShowing);
+  const [showingLoaded, setShowingLoaded] = useState(initialShowing !== null);
 
-  // After any outreach/negotiation, append a placeholder activity so the
-  // timeline refreshes without a full page reload.
+  useEffect(() => {
+    if (showingLoaded) return;
+    let cancelled = false;
+    getShowingStateAction(lead.id, projectId).then((res) => {
+      if (cancelled) return;
+      if (res.ok) setLoadedShowing(res.showing);
+      setShowingLoaded(true);
+    }).catch(() => setShowingLoaded(true));
+    return () => { cancelled = true; };
+    // Only run once on mount — lead.id and projectId are stable per workspace instance.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // After any outreach/negotiation/showing action, refresh the activity count
+  // so the "no activities" message disappears (optimistic).
   const handleActivityAdded = useCallback(() => {
-    // Optimistic: mark for refresh. In a future phase, re-fetch via server action.
-    // For now, just trigger a re-render so the "no activities" message disappears.
-    setActivities((prev) => prev); // no-op to avoid stale closure lint
+    setActivities((prev) => prev); // triggers re-render without full reload
   }, []);
 
   const isNegotiating = lead.acquisitionStage === "negotiating";
   const isTerminal = TERMINAL_STAGES.has(lead.acquisitionStage);
+  // Show the showing section for all non-terminal, non-agreement_signed stages.
+  // Agreement_signed means the deal is done — showing is irrelevant.
+  const showShowingSection = !isTerminal && lead.acquisitionStage !== "agreement_signed";
 
   return (
     <div
@@ -1187,6 +1732,17 @@ export function LeadWorkspace({
       )}
 
       <OwnerOutreachPlaybookSection />
+
+      {showShowingSection && (
+        <ShowingSection
+          lead={lead}
+          projectId={projectId}
+          owner={owner}
+          initialShowing={loadedShowing}
+          onStageChange={onStageChange}
+          onActivityAdded={handleActivityAdded}
+        />
+      )}
 
       <ActivityTimeline activities={activities} />
 
