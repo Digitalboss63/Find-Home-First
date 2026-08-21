@@ -21,6 +21,7 @@
   "dependencies": {
     "@clerk/nextjs": "^7.6.0",
     "@react-pdf/renderer": "^4.5.1",
+    "docx": "^9.7.1",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
