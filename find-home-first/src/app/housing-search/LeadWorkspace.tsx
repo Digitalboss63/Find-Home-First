@@ -9,6 +9,7 @@
  *   - Listing Contact (labeled "not verified as property owner")
  *   - Stage controls (advance / reopen)
  *   - Record Outreach
+ *   - Owner Outreach Playbook (collapsible, with PDF/DOCX export)
  *   - Activity timeline (append-only, chronological)
  *   - Negotiation terms
  *   - Secure Property (negotiating stage only)
@@ -17,6 +18,13 @@
  */
 
 import { useState, useTransition, useCallback } from "react";
+import {
+  PLAYBOOK_VERSION,
+  openingScript,
+  outreachFramework,
+  objections,
+  prohibitedAssurances,
+} from "@/lib/owner-outreach-playbook";
 import type { PropertyLeadView } from "@/lib/repository";
 import {
   PIPELINE_STAGES,
@@ -931,6 +939,191 @@ function SecurePropertySection({
   );
 }
 
+// ─── Owner Outreach Playbook ──────────────────────────────────────────────────
+
+function OwnerOutreachPlaybookSection() {
+  const [expanded, setExpanded] = useState(false);
+  const [openObjectionId, setOpenObjectionId] = useState<number | null>(null);
+
+  function handleExport(format: "pdf" | "docx") {
+    window.location.href = `/api/export/owner-outreach-playbook/${format}`;
+  }
+
+  return (
+    <div
+      className="rounded-lg mb-2"
+      style={{ backgroundColor: "#fff", border: "1px solid var(--color-border)" }}
+    >
+      {/* Header bar */}
+      <div
+        className="flex items-center justify-between p-3"
+        style={{ borderBottom: expanded ? "1px solid var(--color-border)" : undefined }}
+      >
+        <div className="flex items-center gap-2">
+          <p style={sectionHeadingStyle}>Owner Outreach Playbook</p>
+          <span
+            className="text-xs px-1.5 py-0.5 rounded-full font-semibold"
+            style={{ backgroundColor: "var(--color-surface-soft)", color: "var(--color-secondary)", border: "1px solid var(--color-border)" }}
+          >
+            v{PLAYBOOK_VERSION}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleExport("pdf")}
+            title="Export Owner Outreach Playbook as PDF"
+            className="text-xs px-2 py-0.5 rounded font-semibold"
+            style={{ border: "1px solid var(--color-border)", backgroundColor: "#fff", color: "var(--color-secondary)" }}
+          >
+            Export PDF
+          </button>
+          <button
+            type="button"
+            onClick={() => handleExport("docx")}
+            title="Export Owner Outreach Playbook as Word document"
+            className="text-xs px-2 py-0.5 rounded font-semibold"
+            style={{ border: "1px solid var(--color-border)", backgroundColor: "#fff", color: "var(--color-secondary)" }}
+          >
+            Export Word
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            className="text-xs px-2 py-0.5 rounded font-semibold"
+            style={{ border: "1px solid var(--color-border)", backgroundColor: expanded ? "var(--color-surface-soft)" : "#fff", color: "var(--color-primary)" }}
+          >
+            {expanded ? "Hide Playbook ▲" : "View Playbook ▼"}
+          </button>
+        </div>
+      </div>
+
+      {/* Playbook content (collapsed by default) */}
+      {expanded && (
+        <div className="p-3 space-y-4 text-xs" style={{ color: "var(--color-text)" }}>
+
+          {/* Opening Script */}
+          <div>
+            <p className="font-bold text-sm mb-1" style={{ color: "var(--color-primary)" }}>
+              {openingScript.title}
+            </p>
+            <p
+              className="mb-2 p-2 rounded"
+              style={{ backgroundColor: "var(--color-surface-soft)", border: "1px solid var(--color-border)" }}
+            >
+              {openingScript.text}
+            </p>
+            <div className="space-y-2">
+              {openingScript.followUps.map((fu, i) => (
+                <div key={i} className="rounded p-2" style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}>
+                  <p className="font-semibold mb-1" style={{ color: "#166534" }}>{fu.prompt}</p>
+                  <p style={{ color: "var(--color-text)" }}>{fu.response}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Primary Objective */}
+          <div
+            className="rounded p-2 font-semibold"
+            style={{ backgroundColor: "#FEF3C7", border: "1px solid #FDE68A", color: "#92400E" }}
+          >
+            🎯 <span>Primary Objective: </span>{openingScript.primaryObjective}
+          </div>
+
+          {/* Outreach Framework */}
+          <div>
+            <p className="font-bold mb-1" style={{ color: "var(--color-primary)" }}>
+              {outreachFramework.name}
+            </p>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {outreachFramework.steps.map((step, i) => (
+                <span key={i} className="flex items-center gap-1">
+                  <span
+                    className="px-2 py-0.5 rounded font-semibold text-white text-xs"
+                    style={{ backgroundColor: "var(--color-secondary)" }}
+                  >
+                    {step}
+                  </span>
+                  {i < outreachFramework.steps.length - 1 && (
+                    <span style={{ opacity: 0.4 }}>→</span>
+                  )}
+                </span>
+              ))}
+            </div>
+            <p style={{ opacity: 0.75 }}>{outreachFramework.guidance}</p>
+          </div>
+
+          {/* Objection Responses — accordion */}
+          <div>
+            <p className="font-bold mb-2" style={{ color: "var(--color-primary)" }}>
+              Owner Objections &amp; Responses ({objections.length})
+            </p>
+            <div className="space-y-1">
+              {objections.map((obj) => (
+                <div
+                  key={obj.id}
+                  className="rounded overflow-hidden"
+                  style={{ border: "1px solid var(--color-border)" }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenObjectionId((prev) => (prev === obj.id ? null : obj.id))}
+                    aria-expanded={openObjectionId === obj.id}
+                    className="w-full text-left flex items-center gap-2 px-2 py-1.5"
+                    style={{
+                      backgroundColor: openObjectionId === obj.id ? "var(--color-surface-soft)" : "#fff",
+                      color: "var(--color-text)",
+                    }}
+                  >
+                    <span
+                      className="shrink-0 font-bold text-xs rounded-full w-5 h-5 flex items-center justify-center"
+                      style={{ backgroundColor: "var(--color-surface-soft)", border: "1px solid var(--color-border)", color: "var(--color-secondary)" }}
+                    >
+                      {obj.id}
+                    </span>
+                    <span className="font-semibold flex-1 text-xs">{obj.objection}</span>
+                    <span style={{ opacity: 0.4 }}>{openObjectionId === obj.id ? "▲" : "▼"}</span>
+                  </button>
+                  {openObjectionId === obj.id && (
+                    <div
+                      className="px-3 py-2"
+                      style={{ borderTop: "1px solid var(--color-border)", backgroundColor: "#FAFAFA" }}
+                    >
+                      <p style={{ color: "var(--color-text)", lineHeight: 1.6 }}>{obj.response}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Guardrails / Prohibited Assurances */}
+          <div
+            className="rounded p-2"
+            style={{ backgroundColor: "#FFF1F2", border: "1px solid #FECDD3" }}
+          >
+            <p className="font-bold mb-1.5" style={{ color: "#9F1239" }}>
+              ⛔ Guardrails — {prohibitedAssurances.title}
+            </p>
+            <ul className="space-y-0.5 mb-2">
+              {prohibitedAssurances.items.map((item, i) => (
+                <li key={i} className="flex items-start gap-1.5">
+                  <span style={{ color: "#BE123C" }}>✗</span>
+                  <span style={{ color: "#9F1239", fontWeight: 600 }}>{item}</span>
+                </li>
+              ))}
+            </ul>
+            <p style={{ color: "#7F1D1D", fontStyle: "italic" }}>{prohibitedAssurances.guidance}</p>
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── LeadWorkspace (main export) ─────────────────────────────────────────────
 
 export interface LeadWorkspaceProps {
@@ -992,6 +1185,8 @@ export function LeadWorkspace({
           onActivityAdded={handleActivityAdded}
         />
       )}
+
+      <OwnerOutreachPlaybookSection />
 
       <ActivityTimeline activities={activities} />
 
