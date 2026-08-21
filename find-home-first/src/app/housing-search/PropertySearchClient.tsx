@@ -205,11 +205,15 @@ function OwnerPanel({
   leadId,
   projectId,
   listing,
+  isSaved,
+  onStartOutreach,
 }: {
   propertyId: string;
   leadId: string | null;
   projectId: string;
   listing: RentCastListing;
+  isSaved: boolean;
+  onStartOutreach?: () => void;
 }) {
   const [owner, setOwner] = useState<RentCastOwner | null>(null);
   const [enrichedScore, setEnrichedScore] = useState<OpportunityResult | null>(null);
@@ -352,6 +356,20 @@ function OwnerPanel({
           </p>
         </div>
       )}
+
+      {/* Start Owner Outreach — only when owner loaded AND lead is saved */}
+      {isSaved && onStartOutreach && (
+        <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--color-border)" }}>
+          <button
+            type="button"
+            onClick={onStartOutreach}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white"
+            style={{ backgroundColor: "var(--color-action)" }}
+          >
+            Start Owner Outreach →
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -398,7 +416,9 @@ function ListingCard({
   isSelected,
   onSelect,
   savedLeadIds,
+  savedLeads,
   onSaved,
+  onStartOutreach,
   classification,
 }: {
   listing: RentCastListing;
@@ -406,7 +426,9 @@ function ListingCard({
   isSelected: boolean;
   onSelect: () => void;
   savedLeadIds: Set<string>;
+  savedLeads: PropertyLeadView[];
   onSaved?: (leadId: string) => void;
+  onStartOutreach?: (leadId: string) => void;
   classification?: ListingClassification;
 }) {
   const [saving, setSaving] = useState(false);
@@ -427,6 +449,16 @@ function ListingCard({
   // Pre-enrichment opportunity score from listing data only
   const preScore = useMemo(() => scoreFromListing(listing), [listing]);
   const isSaved = listing.id ? savedLeadIds.has(listing.id) : false;
+
+  // Resolve lead ID — prefer local state (current session); fall back to
+  // savedLeads array for properties saved in a prior session.
+  const resolvedLeadId: string | null = useMemo(() => {
+    if (leadId) return leadId;
+    if (!listing.id) return null;
+    const match = savedLeads.find(l => (l.externalId ?? l.id) === listing.id);
+    return match?.id ?? null;
+  }, [leadId, listing.id, savedLeads]);
+
   const streetViewUrl = buildGoogleStreetViewUrl(listing.latitude, listing.longitude);
 
   function handleSave() {
@@ -692,9 +724,15 @@ function ListingCard({
           <div onClick={e => e.stopPropagation()}>
             <OwnerPanel
               propertyId={listing.id}
-              leadId={leadId}
+              leadId={resolvedLeadId}
               projectId={projectId}
               listing={listing}
+              isSaved={isSaved}
+              onStartOutreach={
+                resolvedLeadId && onStartOutreach
+                  ? () => onStartOutreach(resolvedLeadId)
+                  : undefined
+              }
             />
           </div>
         )}
@@ -919,13 +957,43 @@ function ManualLeadForm({ projectId }: { projectId: string }) {
 function SavedLeadsPanel({
   leads,
   projectId,
+  focusedLeadId,
+  onClearFocus,
 }: {
   leads: PropertyLeadView[];
   projectId: string;
+  focusedLeadId?: string | null;
+  onClearFocus?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [stageUpdates, setStageUpdates] = useState<Record<string, string>>({});
   const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
+  const focusedLeadRef = useRef<HTMLLIElement | null>(null);
+
+  // Derive effective panel state from focusedLeadId (avoids setState in effect body).
+  // When focusedLeadId is set, the panel is forced open and the matching lead expanded.
+  // This triggers a render, which mounts the ref on the target <li>, allowing the
+  // scroll effect below to find it.
+  const effectiveOpen = open || !!focusedLeadId;
+  const effectiveExpandedLeadId = focusedLeadId ?? expandedLeadId;
+
+  // Scroll-only effect — no setState calls (scroll is an external side effect).
+  // Also locks in local state so panel stays open after focusedLeadId is cleared.
+  useEffect(() => {
+    if (!focusedLeadId) return;
+    const raf = requestAnimationFrame(() => {
+      // Lock open + expanded into local state so they persist after focus clears.
+      setOpen(true);
+      setExpandedLeadId(focusedLeadId);
+      focusedLeadRef.current?.scrollIntoView({
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
+        block: "start",
+      });
+      // Signal parent that the focus has been handled.
+      onClearFocus?.();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [focusedLeadId, onClearFocus]);
 
   if (leads.length === 0) return null;
 
@@ -947,23 +1015,28 @@ function SavedLeadsPanel({
             backgroundColor: "var(--color-surface-soft)",
             color: "var(--color-primary)",
           }}
-          aria-expanded={open}
+          aria-expanded={effectiveOpen}
           aria-controls="saved-leads-list"
         >
           <span className="font-semibold text-sm" id="saved-leads-heading">
             Saved Property Leads ({leads.length})
           </span>
-          <span aria-hidden="true">{open ? "▲" : "▼"}</span>
+          <span aria-hidden="true">{effectiveOpen ? "▲" : "▼"}</span>
         </button>
 
-        {open && (
+        {effectiveOpen && (
           <ul id="saved-leads-list" className="divide-y bg-white" style={{ borderTop: "1px solid var(--color-border)" }}>
             {leads.map((lead) => {
               const currentStage = stageUpdates[lead.id] ?? lead.acquisitionStage;
               const stageLabel = PIPELINE_STAGE_LABELS[currentStage] ?? currentStage;
-              const isExpanded = expandedLeadId === lead.id;
+              const isExpanded = effectiveExpandedLeadId === lead.id;
+              const isFocused = focusedLeadId === lead.id;
               return (
-                <li key={lead.id} className="px-5 py-4">
+                <li
+                  key={lead.id}
+                  className="px-5 py-4"
+                  ref={isFocused ? focusedLeadRef : null}
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium" style={{ color: "var(--color-primary)" }}>
@@ -1021,6 +1094,7 @@ function SavedLeadsPanel({
                           cursor: "pointer",
                         }}
                         aria-expanded={isExpanded}
+                        aria-label={isExpanded ? `Close workspace for ${lead.address}` : `Open workspace for ${lead.address}`}
                       >
                         {isExpanded ? "Close ▲" : "Workspace ▼"}
                       </button>
@@ -1083,6 +1157,10 @@ export default function PropertySearchClient({
   );
   // ── Saved leads — tracked as state so the ★ appears immediately on save ──
   const [savedLeads, setSavedLeads] = useState<PropertyLeadView[]>(initialSavedLeads);
+
+  // ── Focused lead — set when "Start Owner Outreach" is clicked ───────────
+  // Triggers SavedLeadsPanel to open + expand the matching LeadWorkspace.
+  const [focusedLeadId, setFocusedLeadId] = useState<string | null>(null);
 
   // ── Fit criteria + property type preferences ─────────────────────────────
   const [fitCriteriaState, setFitCriteriaState] = useState<PropertyFitCriteria>(fitCriteria);
@@ -1610,7 +1688,12 @@ export default function PropertySearchClient({
       </section>
 
       {/* ── Saved Leads Panel ────────────────────────────────────────── */}
-      <SavedLeadsPanel leads={savedLeads} projectId={projectId} />
+      <SavedLeadsPanel
+        leads={savedLeads}
+        projectId={projectId}
+        focusedLeadId={focusedLeadId}
+        onClearFocus={() => setFocusedLeadId(null)}
+      />
 
       {/* ── Filter form ──────────────────────────────────────────────── */}
       <section aria-labelledby="search-filters-heading" className="mb-8">
@@ -2057,7 +2140,9 @@ export default function PropertySearchClient({
                       isSelected={selectedId === listing.id}
                       onSelect={() => setSelectedId(prev => prev === listing.id ? null : listing.id)}
                       savedLeadIds={savedLeadIds}
+                      savedLeads={savedLeads}
                       classification={classifiedById[listing.id]}
+                      onStartOutreach={(leadId) => setFocusedLeadId(leadId)}
                       onSaved={(leadId) => {
                         // Add to savedLeads immediately so the ★ appears without a reload.
                         setSavedLeads(prev => {
