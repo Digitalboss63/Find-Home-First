@@ -28,8 +28,11 @@ import {
   createPreparationTasks,
   advanceProjectToPreparingProperty,
   checkExistingSecuredProperty,
+  createOrUpdateShowingTask,
+  resolveShowingTask,
   type NegotiationUpdate,
   type OwnerContactUpdate,
+  type ShowingData,
 } from "@/lib/repository-leads";
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -360,6 +363,236 @@ function computeLeaseEndDate(startDate: string, months: number | null): string |
     return d.toISOString().slice(0, 10);
   } catch {
     return null;
+  }
+}
+
+// ─── getShowingStateAction ────────────────────────────────────────────────────
+
+export async function getShowingStateAction(
+  leadId: string,
+  projectId: string
+): Promise<{ ok: boolean; showing: import("@/lib/repository-leads").ActiveShowingView | null; error?: string }> {
+  const { organizationId } = await requireOrganization();
+  const db = getDb();
+  if (!db) return { ok: false, showing: null, error: "Database unavailable." };
+
+  const belongs = await projectBelongsToOrg(projectId, organizationId);
+  if (!belongs) return { ok: false, showing: null, error: "Project not found." };
+
+  try {
+    const { getActiveShowing } = await import("@/lib/repository-leads");
+    const showing = await getActiveShowing(leadId, organizationId);
+    return { ok: true, showing };
+  } catch (err) {
+    console.error("[lead-actions] getShowingStateAction failed:", err);
+    return { ok: false, showing: null, error: "Could not load showing state." };
+  }
+}
+
+// ─── scheduleShowingAction ────────────────────────────────────────────────────
+
+export interface ScheduleShowingInput {
+  projectId: string;
+  leadId: string;
+  date: string;
+  time: string;
+  location: string;
+  ownerName: string;
+  userNotes: string | null;
+  isReschedule?: boolean;
+}
+
+export async function scheduleShowingAction(
+  input: ScheduleShowingInput
+): Promise<{ ok: boolean; error?: string }> {
+  if (!input.date) return { ok: false, error: "Showing date is required." };
+  if (!input.time) return { ok: false, error: "Showing time is required." };
+  if (!input.location.trim()) return { ok: false, error: "Meeting location is required." };
+
+  const { organizationId, user } = await requireOrganization();
+  const db = getDb();
+  if (!db) return { ok: false, error: "Database unavailable." };
+
+  const belongs = await projectBelongsToOrg(input.projectId, organizationId);
+  if (!belongs) return { ok: false, error: "Project not found." };
+
+  const lead = await loadAndVerifyLead(db, input.leadId, organizationId, input.projectId);
+  if (!lead) return { ok: false, error: "Lead not found in this project." };
+
+  const actorUserId = await resolveActorUserId(db, user.clerkUserId);
+
+  try {
+    await db.transaction(async (tx) => {
+      const showingData: ShowingData = {
+        date: input.date,
+        time: input.time,
+        location: input.location.trim(),
+        ownerName: input.ownerName.trim(),
+        userNotes: input.userNotes?.trim() || null,
+      };
+
+      const activityType = input.isReschedule ? "showing_rescheduled" : "showing_scheduled";
+      const label = input.isReschedule ? "🔄 Showing Rescheduled" : "📅 Showing Scheduled";
+
+      await appendLeadActivity(tx, {
+        organizationId,
+        projectId: input.projectId,
+        leadId: input.leadId,
+        ownerId: lead.ownerId,
+        activityType,
+        notes: JSON.stringify(showingData),
+        outcome: `${label} — ${input.date} at ${input.time} · ${input.location.trim()}`,
+        actorUserId,
+      });
+
+      // Create or update the single showing task (reschedule updates the existing one).
+      await createOrUpdateShowingTask(
+        tx,
+        organizationId,
+        input.projectId,
+        input.leadId,
+        input.date,
+        lead.address
+      );
+    });
+    return { ok: true };
+  } catch (err) {
+    console.error("[lead-actions] scheduleShowingAction failed:", err);
+    return { ok: false, error: "Could not schedule showing. Please try again." };
+  }
+}
+
+// ─── cancelShowingAction ──────────────────────────────────────────────────────
+
+export interface CancelShowingInput {
+  projectId: string;
+  leadId: string;
+  notes: string | null;
+}
+
+export async function cancelShowingAction(
+  input: CancelShowingInput
+): Promise<{ ok: boolean; error?: string }> {
+  const { organizationId, user } = await requireOrganization();
+  const db = getDb();
+  if (!db) return { ok: false, error: "Database unavailable." };
+
+  const belongs = await projectBelongsToOrg(input.projectId, organizationId);
+  if (!belongs) return { ok: false, error: "Project not found." };
+
+  const lead = await loadAndVerifyLead(db, input.leadId, organizationId, input.projectId);
+  if (!lead) return { ok: false, error: "Lead not found in this project." };
+
+  const actorUserId = await resolveActorUserId(db, user.clerkUserId);
+
+  try {
+    await db.transaction(async (tx) => {
+      await appendLeadActivity(tx, {
+        organizationId,
+        projectId: input.projectId,
+        leadId: input.leadId,
+        ownerId: lead.ownerId,
+        activityType: "showing_cancelled",
+        outcome: "❌ Showing Cancelled",
+        notes: input.notes?.trim() || null,
+        actorUserId,
+      });
+      await resolveShowingTask(tx, organizationId, input.projectId, input.leadId);
+    });
+    return { ok: true };
+  } catch (err) {
+    console.error("[lead-actions] cancelShowingAction failed:", err);
+    return { ok: false, error: "Could not cancel showing. Please try again." };
+  }
+}
+
+// ─── completeShowingAction ────────────────────────────────────────────────────
+
+export interface CompleteShowingInput {
+  projectId: string;
+  leadId: string;
+  /** "good_fit" | "needs_follow_up" | "not_suitable" | "owner_not_moving_forward" */
+  outcomeKey: string;
+  notes: string | null;
+  /** If truthy, advance the lead stage to this value (validated server-side) */
+  advanceTo: string | null;
+}
+
+export async function completeShowingAction(
+  input: CompleteShowingInput
+): Promise<{ ok: boolean; error?: string }> {
+  const VALID_OUTCOME_KEYS = ["good_fit", "needs_follow_up", "not_suitable", "owner_not_moving_forward"];
+  if (!VALID_OUTCOME_KEYS.includes(input.outcomeKey)) {
+    return { ok: false, error: "Invalid showing outcome." };
+  }
+
+  const { organizationId, user } = await requireOrganization();
+  const db = getDb();
+  if (!db) return { ok: false, error: "Database unavailable." };
+
+  const belongs = await projectBelongsToOrg(input.projectId, organizationId);
+  if (!belongs) return { ok: false, error: "Project not found." };
+
+  const lead = await loadAndVerifyLead(db, input.leadId, organizationId, input.projectId);
+  if (!lead) return { ok: false, error: "Lead not found in this project." };
+
+  // Validate stage transition if requested.
+  if (input.advanceTo && !isTransitionPermitted(lead.acquisitionStage, input.advanceTo)) {
+    return {
+      ok: false,
+      error: `Stage transition from "${lead.acquisitionStage}" to "${input.advanceTo}" is not permitted.`,
+    };
+  }
+
+  const actorUserId = await resolveActorUserId(db, user.clerkUserId);
+
+  const OUTCOME_LABELS: Record<string, string> = {
+    good_fit: "Good Fit — Move Forward",
+    needs_follow_up: "Needs Follow-up",
+    not_suitable: "Property Not Suitable",
+    owner_not_moving_forward: "Owner Not Moving Forward",
+  };
+
+  try {
+    await db.transaction(async (tx) => {
+      // 1. Append showing_completed activity.
+      await appendLeadActivity(tx, {
+        organizationId,
+        projectId: input.projectId,
+        leadId: input.leadId,
+        ownerId: lead.ownerId,
+        activityType: "showing_completed",
+        outcome: input.outcomeKey,
+        notes: input.notes?.trim() || `Showing complete. Result: ${OUTCOME_LABELS[input.outcomeKey]}`,
+        stageBefore: input.advanceTo ? lead.acquisitionStage : null,
+        stageAfter: input.advanceTo ?? null,
+        actorUserId,
+      });
+
+      // 2. Advance stage if requested (e.g. interested → negotiating, interested → follow_up, interested → not_interested).
+      if (input.advanceTo) {
+        await transitionLeadStage(
+          tx,
+          input.leadId,
+          organizationId,
+          lead.acquisitionStage,
+          input.advanceTo,
+          actorUserId,
+          {
+            projectId: input.projectId,
+            ownerId: lead.ownerId,
+            notes: `Stage advanced after showing — result: ${OUTCOME_LABELS[input.outcomeKey]}`,
+          }
+        );
+      }
+
+      // 3. Resolve (complete) the showing task.
+      await resolveShowingTask(tx, organizationId, input.projectId, input.leadId);
+    });
+    return { ok: true };
+  } catch (err) {
+    console.error("[lead-actions] completeShowingAction failed:", err);
+    return { ok: false, error: "Could not record showing outcome. Please try again." };
   }
 }
 
