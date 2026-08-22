@@ -4,8 +4,10 @@
  * Pure function — no DB, no network.
  */
 import type { MarketReportSnapshot, DemographicMetric, ProgramOpportunity, EconomicsScenario, Barrier, LaunchStep } from "../export/types";
+import type { ZipOpportunityRanking } from "../export/types";
 import type { CollectedData, ScoringResult } from "./types";
 import { CURRENT_REPORT_ENGINE_VERSION } from "./report-version";
+import { scoreOpportunity } from "@/lib/opportunity-engine";
 
 export function buildReport(
   reportId: string,
@@ -189,6 +191,36 @@ export function buildReport(
     ...(data.chas.status !== "not_verified" ? [data.chas.source] : []),
   ].map(toReportSource);
 
+  // ── Property Opportunity Engine V1 ─────────────────────────────────────────
+  let opportunityRankings: ZipOpportunityRanking[] | undefined;
+  try {
+    const opp = scoreOpportunity(data, "", 1);
+    opportunityRankings = [{
+      zipCode: opp.zipCode,
+      rank: opp.rank,
+      label: opp.zipCode ? opp.zipCode : "Metro / CoC Level",
+      veteranNeedIndex: opp.veteranNeedIndex,
+      veteranNeedScore: opp.veteranNeedScore,
+      placementInfraIndex: opp.placementInfraIndex,
+      placementInfraScore: opp.placementInfraScore,
+      housingEconomicsIndex: opp.housingEconomicsIndex,
+      housingEconomicsScore: opp.housingEconomicsScore,
+      propertyAvailIndex: opp.propertyAvailIndex,
+      propertyAvailScore: opp.propertyAvailScore,
+      opportunityScore: opp.opportunityScore,
+      priorityLevel: opp.priorityLevel,
+      confidenceLevel: opp.confidenceLevel,
+      isEstimated: opp.isEstimated,
+      sourceGeography: opp.sourceGeography,
+      sourceGeographyType: opp.sourceGeographyType,
+      recommendation: opp.recommendation,
+      calculationVersion: opp.calculationVersion,
+    }];
+  } catch (err) {
+    console.warn("[report-builder] opportunity engine failed:", err);
+    opportunityRankings = undefined;
+  }
+
   return {
     analysisEngineVersion: CURRENT_REPORT_ENGINE_VERSION,
     reportId,
@@ -228,5 +260,6 @@ export function buildReport(
     launchSteps,
     primaryNextActionButton: scoring.primaryNextActionButton,
     sources,
+    opportunityRankings,
   };
 }

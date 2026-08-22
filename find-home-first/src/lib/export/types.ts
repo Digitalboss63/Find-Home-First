@@ -55,7 +55,7 @@ export interface ProgramOpportunity {
   assistanceAvailable: string;
   findHomeFirstRole: string;
   localAdminOrg: string | null;
-  sharedHousingCompatibility: string; // e.g. "Nationally allowable — local verification required"
+  sharedHousingCompatibility: string;
   leaseRequirements: string | null;
   inspectionRequirements: string | null;
   referralProcess: string | null;
@@ -67,7 +67,7 @@ export interface ProgramOpportunity {
 
 export interface EconomicsScenario {
   label: "Conservative" | "Expected" | "Strong";
-  occupancyPct: number; // 70 | 80 | 90
+  occupancyPct: number;
   usableRooms: number;
   expectedOccupiedRooms: number;
   revenueUsd: number | null;
@@ -100,7 +100,7 @@ export interface ReportSource {
   directUrl: string | null;
   reportingPeriod: string;
   geography: string;
-  retrievedAt: string; // ISO
+  retrievedAt: string;
   retrievalMethod: "api" | "csv_parse" | "web_fetch";
   confidence: "high" | "medium" | "low" | "not_verified";
   isDerived: boolean;
@@ -114,19 +114,16 @@ export interface LaunchStep {
 // ─── Full report snapshot ─────────────────────────────────────────────────────
 
 export interface MarketReportSnapshot {
-  // Identity
-  /** Version of the collection/scoring rules used to create this snapshot. */
   analysisEngineVersion?: number;
   reportId: string;
   projectId: string;
   projectName: string;
   version: number;
-  generatedAt: string;   // ISO
+  generatedAt: string;
   dataThroughDate: string;
   geography: ReportGeography;
   targetPopulation: string;
 
-  // Section 2 — Verdict
   verdict: "Go" | "Conditional Go" | "No-Go" | "Insufficient Evidence";
   verdictExplanation: string;
   bestTargetPopulation: string;
@@ -134,21 +131,16 @@ export interface MarketReportSnapshot {
   largestBlocker: string;
   primaryNextAction: string;
 
-  // Section 3 — Scorecard
   overallScore: number | null;
   confidence: "high" | "medium" | "low" | "insufficient_data";
   scorecard: ScorecardCategory[];
 
-  // Section 4 — Demographics
-  primaryDemographics: DemographicMetric[];  // max 6 shown up front
+  primaryDemographics: DemographicMetric[];
   allDemographics: DemographicMetric[];
 
-  // Section 5 — Programs
   programs: ProgramOpportunity[];
 
-  // Section 6 — Economics
-  fmrBenchmarks: { label: string; usd: number }[];  // studio/1BR/2BR/3BR/4BR
-  /** Provenance for the FMR table. Optional for older stored report versions. */
+  fmrBenchmarks: { label: string; usd: number }[];
   fmrContext?: {
     geography: string;
     reportingPeriod: string;
@@ -157,23 +149,58 @@ export interface MarketReportSnapshot {
   economicsScenarios: EconomicsScenario[];
   economicsConclusion: string;
 
-  // Section 7 — Barriers
   barriers: Barrier[];
 
-  // Section 8 — Launch strategy
   launchSteps: LaunchStep[];
   primaryNextActionButton: string;
 
-  // Section 9 — Sources
   sources: ReportSource[];
+
+  /** ZIP/metro opportunity rankings from the Property Opportunity Engine V1. */
+  opportunityRankings?: ZipOpportunityRanking[];
+}
+
+// ─── Property Opportunity Engine V1 ──────────────────────────────────────────
+
+export interface OpportunityScoreInputSnapshot {
+  key: string;
+  rawValue: number | string | null;
+  normalizedValue: number | null;
+  source: string;
+  geography: string;
+  isEstimated: boolean;
+}
+
+export interface ZipOpportunityRanking {
+  zipCode: string;
+  rank: number;
+  label: string;
+  veteranNeedIndex: number;
+  veteranNeedScore: number;
+  placementInfraIndex: number;
+  placementInfraScore: number;
+  housingEconomicsIndex: number;
+  housingEconomicsScore: number;
+  propertyAvailIndex: number;
+  propertyAvailScore: number;
+  opportunityScore: number;
+  priorityLevel: "PRIORITY" | "STRONG" | "WATCH" | "LOW";
+  confidenceLevel: "HIGH" | "MEDIUM" | "ESTIMATED";
+  isEstimated: boolean;
+  sourceGeography: string;
+  sourceGeographyType: string;
+  recommendation: string;
+  calculationVersion: string;
+  /** Raw/normalized inputs retained in the saved report and DB for score auditability. */
+  inputs?: OpportunityScoreInputSnapshot[];
 }
 
 // ─── Export input ─────────────────────────────────────────────────────────────
 
 export interface ExportInput {
   report: MarketReportSnapshot;
-  exportedAt: string; // ISO — set at request time, never from snapshot
-  onlineReportUrl?: string; // URL of the live online report for accessibility reference
+  exportedAt: string;
+  onlineReportUrl?: string;
 }
 
 // ─── Filename params ──────────────────────────────────────────────────────────
@@ -183,6 +210,6 @@ export interface FilenameParams {
   stateAbbr: string;
   targetPopulation: string;
   version: number;
-  generatedAt: string; // ISO date string
+  generatedAt: string;
   format: "pdf" | "xlsx";
 }

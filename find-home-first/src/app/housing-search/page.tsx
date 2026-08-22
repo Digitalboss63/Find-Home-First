@@ -153,7 +153,7 @@ function buildFitCriteria(
 }
 
 interface PageProps {
-  searchParams: Promise<{ project?: string }>;
+  searchParams: Promise<{ project?: string; zip?: string }>;
 }
 
 /** Parse "Atlanta, GA" → { city: "Atlanta", state: "GA" } */
@@ -168,6 +168,7 @@ function parseCommunity(community: string): { city: string; state: string } {
 export default async function HousingSearchPage({ searchParams }: PageProps) {
   const { organizationId, user } = await requireOrganization();
   const params = await searchParams;
+  const rawZip = (params.zip ?? "").trim();
   const rawProjectId = params.project;
 
   // ── Validate projectId ──────────────────────────────────────────────────
@@ -313,7 +314,7 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
       projectId,
       city: prefillCity,
       state: prefillState,
-      zipCode: "",
+      zipCode: rawZip || "",
       propertyType: "",
       minBedrooms: "",
       minBathrooms: "",

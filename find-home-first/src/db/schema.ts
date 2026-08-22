@@ -839,3 +839,45 @@ export const marketResearchReports = pgTable(
     uniqueIndex("mrr_project_version_idx").on(t.projectId, t.version),
   ]
 );
+
+// --- Market Opportunity Scores (Property Opportunity Engine V1) ---------------
+
+export const marketOpportunityScores = pgTable(
+  "market_opportunity_scores",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    zipCode: text("zip_code").notNull().default(""),
+    rank: integer("rank").notNull().default(1),
+    veteranNeedIndex:      numeric("veteran_need_index",       { precision: 6, scale: 2 }),
+    veteranNeedScore:      numeric("veteran_need_score",       { precision: 6, scale: 2 }),
+    placementInfraIndex:   numeric("placement_infra_index",    { precision: 6, scale: 2 }),
+    placementInfraScore:   numeric("placement_infra_score",    { precision: 6, scale: 2 }),
+    housingEconomicsIndex: numeric("housing_economics_index",  { precision: 6, scale: 2 }),
+    housingEconomicsScore: numeric("housing_economics_score",  { precision: 6, scale: 2 }),
+    propertyAvailIndex:    numeric("property_avail_index",     { precision: 6, scale: 2 }),
+    propertyAvailScore:    numeric("property_avail_score",     { precision: 6, scale: 2 }),
+    opportunityScore:      integer("opportunity_score").notNull(),
+    priorityLevel:         text("priority_level").notNull(),
+    confidenceLevel:       text("confidence_level").notNull(),
+    sourceGeography:       text("source_geography").notNull(),
+    sourceGeographyType:   text("source_geography_type").notNull(),
+    isEstimated:           boolean("is_estimated").notNull().default(true),
+    recommendation:        text("recommendation"),
+    inputsJson:            text("inputs_json"),
+    calculatedAt:          timestamp("calculated_at", { withTimezone: true }).notNull().defaultNow(),
+    calculationVersion:    text("calculation_version").notNull().default("FHF-OPPORTUNITY-V1"),
+  },
+  (t) => [
+    index("mos_org_idx").on(t.organizationId),
+    index("mos_project_idx").on(t.projectId),
+    index("mos_zip_idx").on(t.zipCode),
+    index("mos_score_idx").on(t.opportunityScore),
+    uniqueIndex("mos_project_zip_ver_idx").on(t.projectId, t.zipCode, t.calculationVersion),
+  ]
+);

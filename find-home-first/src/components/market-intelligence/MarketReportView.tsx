@@ -17,6 +17,7 @@ import type {
   ReportSource,
   LaunchStep,
 } from "@/lib/export/types";
+import { PropertyOpportunitySection } from "./PropertyOpportunitySection";
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const C = {
@@ -624,6 +625,12 @@ export function MarketReportView({ report: r, version, generatedAt, dataThroughD
         {`⚠ This is an automated city report. All data marked "Not Verified" requires direct confirmation with the relevant program administrator before making any operational decision.`}
       </div>
 
+      <PropertyOpportunitySection
+        rankings={r.opportunityRankings ?? []}
+        projectId={r.projectId}
+        city={r.geography.city}
+        stateAbbr={r.geography.stateAbbr}
+      />
       <Section1Cover r={r} />
       <Section2Verdict r={r} />
       <Section3Scorecard r={r} />
