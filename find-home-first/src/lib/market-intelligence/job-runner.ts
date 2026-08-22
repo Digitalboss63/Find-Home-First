@@ -12,6 +12,7 @@ import { collectHudChas } from "./collectors/hud-chas";
 import { scoreMarket } from "./scoring";
 import { buildReport } from "./report-builder";
 import { scoreZipOpportunities } from "@/lib/opportunity-engine/zip-rankings";
+import { scoreRegionalFallbackOpportunity } from "@/lib/opportunity-engine/regional-fallback";
 import { createJob, updateJobStatus, saveReport, saveOpportunityScores, getNextReportVersion } from "../repository-intelligence";
 import type { DrizzleDb } from "@/db/client";
 
@@ -46,11 +47,14 @@ export async function runMarketIntelligenceJob(input: RunJobInput): Promise<RunJ
     const reportId = crypto.randomUUID();
     const snapshot = buildReport(reportId, projectId, projectName, targetPopulation, collectedData, scoring, version);
     const zipRankings = scoreZipOpportunities(collectedData);
-    snapshot.opportunityRankings = zipRankings;
+    const opportunityRankings = zipRankings.length > 0
+      ? zipRankings
+      : [scoreRegionalFallbackOpportunity(collectedData)];
+    snapshot.opportunityRankings = opportunityRankings;
 
     const sourcesSummary = JSON.stringify({ pit: pit.status, fmr: fmr.status, census: census.status, zipDemographics: zipDemographics.status, rentcast: rentcast.status, vaPrograms: vaPrograms.status, incomeLimits: incomeLimits.status, chas: chas.status });
     const savedReportId = await saveReport(db, { id: reportId, organizationId, projectId, jobId, version, status: "complete", reportJson: JSON.stringify(snapshot), dataThroughDate: snapshot.dataThroughDate });
-    await saveOpportunityScores(db, organizationId, projectId, zipRankings);
+    await saveOpportunityScores(db, organizationId, projectId, opportunityRankings);
     await updateJobStatus(db, jobId, "complete", { sourcesSummary, completedAt: new Date() });
     return { jobId, reportId: savedReportId, version, status: "complete", verdict: scoring.verdict };
   } catch (err) {
