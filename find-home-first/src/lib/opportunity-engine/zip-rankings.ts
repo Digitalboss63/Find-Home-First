@@ -229,7 +229,7 @@ function recommendation(level: ZipOpportunityRanking["priorityLevel"]): string {
 }
 
 export function scoreZipOpportunities(data: CollectedData): ZipOpportunityRanking[] {
-  const demographicsByZip = new Map((data.zipDemographics.data ?? []).map((row) => [row.zipCode, row]));
+  const demographicsByZip = new Map((data.zipDemographics?.data ?? []).map((row) => [row.zipCode, row]));
   const listings = data.rentcast.data?.sampleListings ?? [];
   const byZip = new Map<string, Listing[]>();
 
@@ -261,7 +261,7 @@ export function scoreZipOpportunities(data: CollectedData): ZipOpportunityRankin
 
     // Public-data ZIP need is modeled: regional PIT/CHAS + ZIP ACS. It is never HIGH-confidence observed ZIP homelessness.
     const strongPublicInputs = Boolean(demographics)
-      && data.zipDemographics.status === "ok"
+      && data.zipDemographics?.status === "ok"
       && data.pit.status === "ok"
       && data.rentcast.status === "ok"
       && data.fmr.status === "ok";
