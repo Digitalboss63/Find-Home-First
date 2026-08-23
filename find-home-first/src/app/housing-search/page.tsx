@@ -278,12 +278,30 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
 
   let initialDraft: PropertySearchDraftView;
 
+  // A ranked Opportunity Engine ZIP belongs to the current project's geography.
+  // Resolve that geography independently of any previously saved search so a
+  // stale draft cannot pair an Atlanta ZIP with an unrelated city/state.
+  let opportunityCity = "";
+  let opportunityState = "";
+  if (rawZip) {
+    if (parsedReport?.geography?.city) opportunityCity = parsedReport.geography.city;
+    if (parsedReport?.geography?.stateAbbr) opportunityState = parsedReport.geography.stateAbbr;
+
+    if ((!opportunityCity || !opportunityState) && project?.community) {
+      const parsed = parseCommunity(project.community);
+      if (!opportunityCity) opportunityCity = parsed.city;
+      if (!opportunityState) opportunityState = parsed.state;
+    }
+  }
+
   if (savedDraft) {
     // Restore the saved draft, but an Opportunity Engine ZIP selection must win.
     // Clear stale result/map state so the user sees a fresh ZIP-targeted search.
     initialDraft = rawZip
       ? {
           ...savedDraft,
+          city: opportunityCity || savedDraft.city,
+          state: opportunityState || savedDraft.state,
           zipCode: rawZip,
           submitted: false,
           lastSearchAt: null,
