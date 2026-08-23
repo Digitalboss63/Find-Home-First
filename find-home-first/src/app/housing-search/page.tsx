@@ -166,10 +166,6 @@ function parseCommunity(community: string): { city: string; state: string } {
   return { city: community.trim(), state: "" };
 }
 
-function sameLocationValue(a: string, b: string): boolean {
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
-}
-
 export default async function HousingSearchPage({ searchParams }: PageProps) {
   const { organizationId, user } = await requireOrganization();
   const params = await searchParams;
@@ -278,54 +274,58 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
   ]);
 
   // ── Build initial draft with smart prefill priority ──────────────────────
-  // Current completed report/project geography is authoritative. Saved draft
-  // filters may be restored only when they do not conflict with that geography.
+  // Priority: opportunity ZIP query, then (1) existing draft, (2) City Report snapshot,
+  // (3) project.community, (4) legacy market research, (5) blank.
 
   let initialDraft: PropertySearchDraftView;
-  let shouldPersistCorrectedContext = false;
 
-  let authoritativeCity = parsedReport?.geography?.city ?? "";
-  let authoritativeState = parsedReport?.geography?.stateAbbr ?? "";
+  // A ranked Opportunity Engine ZIP belongs to the current project's geography.
+  // Resolve that geography independently of any previously saved search so a
+  // stale draft cannot pair an Atlanta ZIP with an unrelated city/state.
+  let opportunityCity = "";
+  let opportunityState = "";
+  if (rawZip) {
+    if (parsedReport?.geography?.city) opportunityCity = parsedReport.geography.city;
+    if (parsedReport?.geography?.stateAbbr) opportunityState = parsedReport.geography.stateAbbr;
 
-  if ((!authoritativeCity || !authoritativeState) && project?.community) {
-    const parsed = parseCommunity(project.community);
-    if (!authoritativeCity) authoritativeCity = parsed.city;
-    if (!authoritativeState) authoritativeState = parsed.state;
+    if ((!opportunityCity || !opportunityState) && project?.community) {
+      const parsed = parseCommunity(project.community);
+      if (!opportunityCity) opportunityCity = parsed.city;
+      if (!opportunityState) opportunityState = parsed.state;
+    }
   }
 
   if (savedDraft) {
-    const savedGeographyIsStale =
-      (!!authoritativeCity && !sameLocationValue(savedDraft.city, authoritativeCity)) ||
-      (!!authoritativeState && !sameLocationValue(savedDraft.state, authoritativeState));
-
-    const locationContextChanged = savedGeographyIsStale || !!rawZip;
-    shouldPersistCorrectedContext = locationContextChanged;
-
-    initialDraft = {
-      ...savedDraft,
-      city: authoritativeCity || savedDraft.city,
-      state: authoritativeState || savedDraft.state,
-      zipCode: rawZip || (savedGeographyIsStale ? "" : savedDraft.zipCode),
-      ...(locationContextChanged
-        ? {
-            submitted: false,
-            lastSearchAt: null,
-            resultsSnapshot: null,
-            resultsCount: 0,
-            queryFingerprint: null,
-            mapLatitude: null,
-            mapLongitude: null,
-            mapRadiusMi: null,
-            mapMode: "list",
-          }
-        : {}),
-    };
+    // Restore the saved draft, but an Opportunity Engine ZIP selection must win.
+    // Clear stale result/map state so the user sees a fresh ZIP-targeted search.
+    initialDraft = rawZip
+      ? {
+          ...savedDraft,
+          city: opportunityCity || savedDraft.city,
+          state: opportunityState || savedDraft.state,
+          zipCode: rawZip,
+          submitted: false,
+          lastSearchAt: null,
+          resultsSnapshot: null,
+          resultsCount: 0,
+          queryFingerprint: null,
+          mapLatitude: null,
+          mapLongitude: null,
+          mapRadiusMi: null,
+          mapMode: "list",
+        }
+      : savedDraft;
   } else {
     // Start with blank
+    let prefillCity = "";
+    let prefillState = "";
     let prefillMaxRent = "";
 
-    // City Report economics
+    // (2) City Report snapshot geography + economics
     if (hasCompletedReport && parsedReport) {
+      if (parsedReport.geography?.city) prefillCity = parsedReport.geography.city;
+      if (parsedReport.geography?.stateAbbr) prefillState = parsedReport.geography.stateAbbr;
+      // Conservative economics propertyRentUsd (only when explicitly present)
       const conservative = parsedReport.economicsScenarios?.find(
         (s) => s.label === "Conservative"
       );
@@ -334,15 +334,22 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
       }
     }
 
-    // Legacy market research — maxAcceptableLease as fallback rent
+    // (3) project.community — only if City Report didn't prefill
+    if (!prefillCity && project?.community) {
+      const parsed = parseCommunity(project.community);
+      prefillCity = parsed.city;
+      prefillState = parsed.state;
+    }
+
+    // (4) Legacy market research — maxAcceptableLease as fallback rent
     if (!prefillMaxRent && marketResearch?.maxAcceptableLease) {
       prefillMaxRent = marketResearch.maxAcceptableLease;
     }
 
     initialDraft = {
       projectId,
-      city: authoritativeCity,
-      state: authoritativeState,
+      city: prefillCity,
+      state: prefillState,
       zipCode: rawZip || "",
       propertyType: "",
       minBedrooms: "",
@@ -360,7 +367,6 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
       mapRadiusMi: null,
       mapMode: "list",
     };
-    shouldPersistCorrectedContext = !!rawZip;
   }
 
   // ── Build fit criteria ──────────────────────────────────────────────────
@@ -370,9 +376,7 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
 
   return (
     <>
-      {shouldPersistCorrectedContext && (
-        <PersistOpportunitySearchContext draft={initialDraft} />
-      )}
+      {rawZip && <PersistOpportunitySearchContext draft={initialDraft} />}
       <PropertySearchClient
         initialDraft={initialDraft}
         savedLeadCount={savedLeads?.length ?? 0}
