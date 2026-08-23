@@ -90,9 +90,9 @@ async function fetchZip(
   zipCode: string,
   fetchFn: typeof fetch,
   timeoutMs: number,
-  apiKey?: string,
+  apiKey: string,
 ): Promise<ZipDemographicData | null> {
-  const keyParam = apiKey ? `&key=${encodeURIComponent(apiKey)}` : "";
+  const keyParam = `&key=${encodeURIComponent(apiKey)}`;
   const url = `https://api.census.gov/data/2024/acs/acs5/subject?get=${VARIABLES.join(",")}&for=zip%20code%20tabulation%20area:${zipCode}${keyParam}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -127,6 +127,15 @@ export async function collectCensusZcta(
       status: "not_verified",
       source: makeSource(geo, now, "not_verified"),
       error: "No candidate ZIP codes were available from current property inventory.",
+    };
+  }
+
+  if (!apiKey) {
+    return {
+      data: [],
+      status: "not_verified",
+      source: makeSource(geo, now, "not_verified"),
+      error: "CENSUS_API_KEY is not configured. ZIP-level ACS Veteran concentration and Veteran poverty inputs are unavailable, so ZIP Veteran Need uses neutral demographic fallback values.",
     };
   }
 
