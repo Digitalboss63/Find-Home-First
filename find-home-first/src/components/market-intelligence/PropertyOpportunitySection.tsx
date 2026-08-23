@@ -112,14 +112,14 @@ function ExpandedDetail({ r, projectId }: { r: ZipOpportunityRanking; projectId:
         <div style={{ fontSize: "0.8rem", color: "#1E3A8A", marginTop: "0.25rem" }}>{r.recommendation}</div>
       </div>
 
-      {/* V1 limitation note */}
+      {/* Regional fallback note */}
       {!r.zipCode && (
         <div style={{ backgroundColor: C.warnBg, border: `1px solid #FCD34D`, borderRadius: "0.375rem", padding: "0.5rem 0.75rem", marginBottom: "0.75rem" }}>
           <div style={{ fontSize: "0.75rem", color: C.warning, fontWeight: 600 }}>
-            ⚠ V1 Limitation: Metro/CoC Level Only
+            ⚠ Regional Fallback — ZIP Ranking Unavailable for This Run
           </div>
           <div style={{ fontSize: "0.75rem", color: "#78350F", marginTop: "0.2rem" }}>
-            ZIP-level granularity is pending (HUD ZIP PIT, Census ZIP tabulation, SSVF ZIP map). This score reflects the entire metro/CoC area. Use the property search to find specific addresses.
+            FHF could not produce a reliable ZIP ranking from the current property inventory and geographic inputs, so this row uses a city/CoC-level estimated fallback. ZIP/ZCTA ranking is supported and will be used automatically when qualifying ZIP-level inputs are available.
           </div>
         </div>
       )}
@@ -167,7 +167,7 @@ export function PropertyOpportunitySection({ rankings, projectId, city, stateAbb
             <div style={{ fontSize: "1.05rem", fontWeight: 700, color: C.primary }}>
               Where Should We Look for Property?
             </div>
-            <div style={{ fontSize: "0.72rem", color: C.muted, marginTop: "0.15rem" }}>Property Opportunity Engine V1</div>
+            <div style={{ fontSize: "0.72rem", color: C.muted, marginTop: "0.15rem" }}>Property Opportunity Engine V1.2</div>
           </div>
           <a
             href={searchBaseUrl}
@@ -213,7 +213,7 @@ export function PropertyOpportunitySection({ rankings, projectId, city, stateAbb
             Where Should We Look for Property?
           </div>
           <div style={{ fontSize: "0.72rem", color: C.muted, marginTop: "0.15rem" }}>
-            Property Opportunity Engine V1 · {locationLabel}
+            Property Opportunity Engine V1.2 · {locationLabel}
           </div>
         </div>
         <a
@@ -341,9 +341,9 @@ export function PropertyOpportunitySection({ rankings, projectId, city, stateAbb
       {/* Workflow guidance */}
       <div style={{ marginTop: "1rem", padding: "0.75rem 1rem", backgroundColor: C.soft, borderRadius: "0.5rem", fontSize: "0.78rem", color: C.secondary }}>
         <strong>How to use this table:</strong> Click any row to see the full score breakdown and data sources.
-        Higher scores indicate stronger opportunity. <strong>PRIORITY</strong> markets have the best combination of Veteran need, program infrastructure, and housing economics.
-        Use <em>Find Properties →</em> to search for 4-bedroom rentals in that area.
-        All scores are metro/CoC level in V1; ZIP-level granularity is on the roadmap.
+        Higher scores indicate stronger opportunity. <strong>PRIORITY</strong> areas have the best combination of Veteran need, placement infrastructure, housing economics, and property availability.
+        Use <em>Find Properties →</em> to search qualifying rentals in that area.
+        When ZIP-level inputs are available, FHF ranks ZIPs directly; otherwise it clearly labels a city/CoC fallback.
       </div>
     </div>
   );
