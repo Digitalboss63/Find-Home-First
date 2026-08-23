@@ -168,7 +168,8 @@ function parseCommunity(community: string): { city: string; state: string } {
 export default async function HousingSearchPage({ searchParams }: PageProps) {
   const { organizationId, user } = await requireOrganization();
   const params = await searchParams;
-  const rawZip = (params.zip ?? "").trim();
+  const zipParam = (params.zip ?? "").trim();
+  const rawZip = /^\d{5}$/.test(zipParam) ? zipParam : "";
   const rawProjectId = params.project;
 
   // ── Validate projectId ──────────────────────────────────────────────────
@@ -272,13 +273,29 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
   ]);
 
   // ── Build initial draft with smart prefill priority ──────────────────────
-  // Priority: (1) existing draft, (2) City Report snapshot, (3) project.community, (4) legacy market research, (5) blank
+  // Priority: opportunity ZIP query, then (1) existing draft, (2) City Report snapshot,
+  // (3) project.community, (4) legacy market research, (5) blank.
 
   let initialDraft: PropertySearchDraftView;
 
   if (savedDraft) {
-    // (1) Existing draft — restore exactly
-    initialDraft = savedDraft;
+    // Restore the saved draft, but an Opportunity Engine ZIP selection must win.
+    // Clear stale result/map state so the user sees a fresh ZIP-targeted search.
+    initialDraft = rawZip
+      ? {
+          ...savedDraft,
+          zipCode: rawZip,
+          submitted: false,
+          lastSearchAt: null,
+          resultsSnapshot: null,
+          resultsCount: 0,
+          queryFingerprint: null,
+          mapLatitude: null,
+          mapLongitude: null,
+          mapRadiusMi: null,
+          mapMode: "list",
+        }
+      : savedDraft;
   } else {
     // Start with blank
     let prefillCity = "";
