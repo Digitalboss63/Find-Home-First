@@ -1,7 +1,7 @@
 import type { MarketReportSnapshot } from "@/lib/export/types";
 
 /** Increment when report interpretation or source coverage materially changes. */
-export const CURRENT_REPORT_ENGINE_VERSION = 2;
+export const CURRENT_REPORT_ENGINE_VERSION = 3;
 
 export function reportNeedsUpdate(
   report: Pick<MarketReportSnapshot, "analysisEngineVersion"> | null | undefined,
