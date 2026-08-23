@@ -34,6 +34,7 @@ import {
   type PropertyTypePreferences,
 } from "@/lib/property-relevance";
 import PropertySearchClient from "./PropertySearchClient";
+import { PersistOpportunitySearchContext } from "./PersistOpportunitySearchContext";
 import ProjectSelector from "./ProjectSelector";
 
 export const metadata: Metadata = {
@@ -374,16 +375,19 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
     (marketResearch?.propertyTypePreferences as PropertyTypePreferences) ?? {};
 
   return (
-    <PropertySearchClient
-      initialDraft={initialDraft}
-      savedLeadCount={savedLeads?.length ?? 0}
-      savedLeads={savedLeads ?? []}
-      rentCastConfigured={isRentCastConfigured()}
-      isDemoMode={isDemoAllowed()}
-      projectId={projectId}
-      hasCompletedReport={hasCompletedReport}
-      fitCriteria={fitCriteria}
-      initialPropertyTypePreferences={initialPropertyTypePreferences}
-    />
+    <>
+      {rawZip && <PersistOpportunitySearchContext draft={initialDraft} />}
+      <PropertySearchClient
+        initialDraft={initialDraft}
+        savedLeadCount={savedLeads?.length ?? 0}
+        savedLeads={savedLeads ?? []}
+        rentCastConfigured={isRentCastConfigured()}
+        isDemoMode={isDemoAllowed()}
+        projectId={projectId}
+        hasCompletedReport={hasCompletedReport}
+        fitCriteria={fitCriteria}
+        initialPropertyTypePreferences={initialPropertyTypePreferences}
+      />
+    </>
   );
 }
