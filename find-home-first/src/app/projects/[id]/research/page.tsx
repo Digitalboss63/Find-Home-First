@@ -13,6 +13,7 @@ import { notFound } from "next/navigation";
 import { requireOrganization } from "@/lib/auth";
 import { getProjectById } from "@/lib/repository";
 import { CityReportPage } from "./CityReportPage";
+import { CityReportDiagnostics } from "./CityReportDiagnostics";
 import { VeteranNeedTargeting } from "./VeteranNeedTargeting";
 
 interface Props {
@@ -36,6 +37,7 @@ export default async function ResearchPage({ params }: Props) {
   return (
     <div style={{ maxWidth: "64rem", margin: "0 auto", padding: "2rem 1.5rem" }}>
       <VeteranNeedTargeting projectId={id} />
+      <CityReportDiagnostics projectId={id} />
       <CityReportPage
         projectId={id}
         projectName={project.name}
