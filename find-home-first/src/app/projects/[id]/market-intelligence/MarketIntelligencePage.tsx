@@ -331,6 +331,8 @@ export function MarketIntelligencePage({ projectId, projectName, community }: Pr
     try { return new Date(generatedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); }
     catch { return generatedAt; }
   })();
+  const zipDemographicsStatus = sourcesSummary?.zipDemographics ?? null;
+  const zipDemographicsError = sourcesSummary?.zipDemographicsError ?? null;
 
   return (
     <div>
@@ -343,6 +345,7 @@ export function MarketIntelligencePage({ projectId, projectName, community }: Pr
         borderRadius: "0.5rem", marginBottom: "1rem", fontSize: "0.8rem",
       }}>
         <span style={{ color: C.primary, fontWeight: 700 }}>v{version}</span>
+        <span style={{ color: C.muted }}>Engine v{snapshot.analysisEngineVersion ?? "?"}</span>
         <span style={{ color: C.muted }}>Generated {generatedDate}</span>
         {sourcesSummary && (
           <span style={{ color: C.muted }}>
@@ -358,6 +361,26 @@ export function MarketIntelligencePage({ projectId, projectName, community }: Pr
           ↻ Refresh Report
         </button>
       </div>
+
+      {zipDemographicsStatus && zipDemographicsStatus !== "ok" && (
+        <div
+          role="alert"
+          style={{
+            backgroundColor: "#FFF7ED",
+            border: "1px solid #FDBA74",
+            borderRadius: "0.5rem",
+            padding: "0.875rem 1rem",
+            marginBottom: "1rem",
+            color: C.warning,
+            fontSize: "0.875rem",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: zipDemographicsError ? "0.35rem" : 0 }}>
+            ZIP Census demographics: {zipDemographicsStatus}
+          </div>
+          {zipDemographicsError && <div>{zipDemographicsError}</div>}
+        </div>
+      )}
 
       {/* Export bar */}
       <MarketReportExportBar
