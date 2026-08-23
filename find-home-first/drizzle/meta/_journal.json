@@ -71,6 +71,13 @@
       "when": 1786486586595,
       "tag": "0009_referral-partners",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787370420000,
+      "tag": "0010_opportunity-engine",
+      "breakpoints": true
     }
   ]
 }
