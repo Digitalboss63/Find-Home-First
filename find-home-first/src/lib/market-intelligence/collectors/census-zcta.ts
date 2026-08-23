@@ -54,7 +54,7 @@ function numberOrNull(value: unknown): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-function parseZctaResponse(json: unknown, requestedZip: string): ZipDemographicData | null {
+export function parseZctaResponse(json: unknown, requestedZip: string): ZipDemographicData | null {
   if (!Array.isArray(json) || json.length < 2 || !Array.isArray(json[0]) || !Array.isArray(json[1])) return null;
   const headers = json[0] as string[];
   const row = json[1] as unknown[];
@@ -86,22 +86,62 @@ function parseZctaResponse(json: unknown, requestedZip: string): ZipDemographicD
   };
 }
 
+/** Result from fetching a single ZIP — carries error context so callers can diagnose failures. */
+interface FetchZipResult {
+  data: ZipDemographicData | null;
+  /** Populated when fetch succeeded but produced no usable data. */
+  error?: string;
+}
+
 async function fetchZip(
   zipCode: string,
   fetchFn: typeof fetch,
   timeoutMs: number,
   apiKey: string,
-): Promise<ZipDemographicData | null> {
+): Promise<FetchZipResult> {
   const keyParam = `&key=${encodeURIComponent(apiKey)}`;
   const url = `https://api.census.gov/data/2024/acs/acs5/subject?get=${VARIABLES.join(",")}&for=zip%20code%20tabulation%20area:${zipCode}${keyParam}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetchFn(url, { signal: controller.signal });
-    if (!response.ok) return null;
-    return parseZctaResponse(await response.json() as unknown, zipCode);
-  } catch {
-    return null;
+
+    if (!response.ok) {
+      return { data: null, error: `Census API HTTP ${response.status} for ZIP ${zipCode}` };
+    }
+
+    // Census returns HTTP 200 with an HTML "Missing Key" page when the API key is
+    // invalid or rejected. Detect this before trying to parse JSON.
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("text/html")) {
+      const body = await response.text().catch(() => "");
+      const isKeyError =
+        body.includes("Missing Key") ||
+        body.includes("Invalid Key") ||
+        body.includes("missing or invalid");
+      return {
+        data: null,
+        error: isKeyError
+          ? `Census API rejected the CENSUS_API_KEY for ZIP ${zipCode} (HTTP 200 HTML: key missing or invalid)`
+          : `Census API returned unexpected HTML for ZIP ${zipCode} (HTTP 200; expected JSON)`,
+      };
+    }
+
+    let json: unknown;
+    try {
+      json = await response.json();
+    } catch {
+      return { data: null, error: `Census API response for ZIP ${zipCode} could not be parsed as JSON` };
+    }
+
+    const parsed = parseZctaResponse(json, zipCode);
+    if (!parsed) {
+      return { data: null, error: `Census ACS S2101 returned no usable ZCTA record for ZIP ${zipCode}` };
+    }
+    return { data: parsed };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown fetch error";
+    return { data: null, error: `Fetch error for ZIP ${zipCode}: ${msg}` };
   } finally {
     clearTimeout(timer);
   }
@@ -140,19 +180,31 @@ export async function collectCensusZcta(
   }
 
   const results: ZipDemographicData[] = [];
+  const errors: string[] = [];
   const batchSize = Math.max(1, Math.min(10, concurrency));
+
   for (let i = 0; i < zips.length; i += batchSize) {
     const batch = zips.slice(i, i + batchSize);
     const rows = await Promise.all(batch.map((zip) => fetchZip(zip, fetchFn, timeoutMs, apiKey)));
-    for (const row of rows) if (row) results.push(row);
+    for (const result of rows) {
+      if (result.data) {
+        results.push(result.data);
+      } else if (result.error) {
+        errors.push(result.error);
+      }
+    }
   }
+
+  // Surface the first error (most likely the key-rejection error) so it appears in
+  // sourcesSummary.zipDemographicsError and is visible in the report API response.
+  const firstError = errors[0] ?? null;
 
   if (!results.length) {
     return {
       data: [],
       status: "not_verified",
       source: makeSource(geo, now, "not_verified"),
-      error: "Census ACS returned no usable ZCTA veteran records for candidate ZIPs.",
+      error: firstError ?? "Census ACS returned no usable ZCTA veteran records for candidate ZIPs.",
     };
   }
 
@@ -161,6 +213,10 @@ export async function collectCensusZcta(
     data: results,
     status: complete ? "ok" : "partial",
     source: makeSource(geo, now, complete ? "high" : "medium"),
-    ...(complete ? {} : { error: `ACS ZCTA data resolved for ${results.length} of ${zips.length} candidate ZIPs.` }),
+    ...(complete
+      ? {}
+      : {
+          error: `ACS ZCTA data resolved for ${results.length} of ${zips.length} candidate ZIPs.${firstError ? ` First error: ${firstError}` : ""}`,
+        }),
   };
 }
