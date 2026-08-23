@@ -15,6 +15,7 @@ import Link from "next/link";
 import { requireOrganization } from "@/lib/auth";
 import {
   getPropertySearchDraft,
+  upsertPropertySearchDraft,
   listProjectLeads,
   listActiveProjects,
   projectBelongsToOrg,
@@ -34,7 +35,6 @@ import {
   type PropertyTypePreferences,
 } from "@/lib/property-relevance";
 import PropertySearchClient from "./PropertySearchClient";
-import { PersistOpportunitySearchContext } from "./PersistOpportunitySearchContext";
 import ProjectSelector from "./ProjectSelector";
 
 export const metadata: Metadata = {
@@ -369,6 +369,19 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
     };
   }
 
+  // Ranked-ZIP navigation is explicit user intent. Persist it synchronously on
+  // the server before rendering so normal navigation back to Find Properties
+  // restores this exact search. Manual edits still become the new saved draft.
+  let handoffPersistError = false;
+  if (rawZip) {
+    const persisted = await upsertPropertySearchDraft(
+      organizationId,
+      user.dbUserId,
+      initialDraft
+    );
+    handoffPersistError = !persisted;
+  }
+
   // ── Build fit criteria ──────────────────────────────────────────────────
   const fitCriteria = buildFitCriteria(project, marketResearch, parsedReport, initialDraft);
   const initialPropertyTypePreferences: PropertyTypePreferences =
@@ -376,7 +389,20 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
 
   return (
     <>
-      {rawZip && <PersistOpportunitySearchContext draft={initialDraft} />}
+      {handoffPersistError && (
+        <div className="max-w-7xl mx-auto px-6 pt-6 lg:px-10" role="alert">
+          <div
+            className="rounded-lg px-4 py-3 text-sm font-medium"
+            style={{
+              backgroundColor: "#FEF2F2",
+              border: "1px solid #FCA5A5",
+              color: "#991B1B",
+            }}
+          >
+            The selected ZIP could not be saved. Do not leave this page until the save issue is resolved.
+          </div>
+        </div>
+      )}
       <PropertySearchClient
         initialDraft={initialDraft}
         savedLeadCount={savedLeads?.length ?? 0}
