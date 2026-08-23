@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import UserMenu from "@/components/UserMenu";
 
+const LAST_PROJECT_STORAGE_KEY = "find-home-first:last-project-id";
+
 // ─── Navigation items ─────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
@@ -107,10 +109,12 @@ function NavLinks({
   isActive,
   onNavigate,
   showBackOffice,
+  findPropertiesHref,
 }: {
   isActive: (href: string) => boolean;
   onNavigate?: () => void;
   showBackOffice: boolean;
+  findPropertiesHref: string;
 }) {
   const items = showBackOffice
     ? [
@@ -123,10 +127,11 @@ function NavLinks({
     <ul className="mt-3 space-y-0.5 px-2">
       {items.map(({ href, label, icon: Icon }) => {
         const active = isActive(href);
+        const resolvedHref = href === "/housing-search" ? findPropertiesHref : href;
         return (
           <li key={href}>
             <Link
-              href={href}
+              href={resolvedHref}
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               className={[
@@ -158,9 +163,16 @@ export default function AppShell({
 }) {
   const pathname = usePathname();
   const inBackOffice = pathname.startsWith("/back-office");
+  const projectFromPath = pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null;
+  const [lastProjectId, setLastProjectId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  const activeProjectId = projectFromPath ?? lastProjectId;
+  const findPropertiesHref = activeProjectId
+    ? `/housing-search?project=${encodeURIComponent(activeProjectId)}`
+    : "/housing-search";
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -174,6 +186,28 @@ export default function AppShell({
     setDrawerOpen(false);
     setTimeout(() => hamburgerRef.current?.focus(), 60);
   };
+
+  // Remember the current project so normal sidebar navigation back to
+  // Find Properties reopens that project's saved search instead of a generic
+  // project-less route. The saved city/state/ZIP still belong to the draft and
+  // only change when the user edits them or explicitly selects a ranked ZIP.
+  useEffect(() => {
+    let projectId = projectFromPath;
+
+    if (pathname.startsWith("/housing-search")) {
+      const queryProject = new URLSearchParams(window.location.search).get("project");
+      if (queryProject) projectId = queryProject;
+    }
+
+    if (projectId) {
+      window.sessionStorage.setItem(LAST_PROJECT_STORAGE_KEY, projectId);
+      setLastProjectId(projectId);
+      return;
+    }
+
+    const storedProjectId = window.sessionStorage.getItem(LAST_PROJECT_STORAGE_KEY);
+    if (storedProjectId) setLastProjectId(storedProjectId);
+  }, [pathname, projectFromPath]);
 
   // Escape key closes drawer
   useEffect(() => {
@@ -224,7 +258,11 @@ export default function AppShell({
         </header>
 
         <nav aria-label="Primary navigation" className="flex-1">
-          <NavLinks isActive={isActive} showBackOffice={showBackOffice} />
+          <NavLinks
+            isActive={isActive}
+            showBackOffice={showBackOffice}
+            findPropertiesHref={findPropertiesHref}
+          />
         </nav>
 
         {/* Sidebar bottom */}
@@ -334,6 +372,7 @@ export default function AppShell({
             isActive={isActive}
             onNavigate={closeDrawer}
             showBackOffice={showBackOffice}
+            findPropertiesHref={findPropertiesHref}
           />
         </nav>
         <div
