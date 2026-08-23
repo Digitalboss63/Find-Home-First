@@ -25,6 +25,15 @@
 - Fixed production TypeScript null-safety failures around optional ZIP demographics.
 - Railway production deployment passed after the Opportunity Engine build fixes; final v0.3.0 acceptance deployment validates the ZIP handoff and migration registration changes.
 
+### Production acceptance completed - 2026-08-23
+
+- Confirmed live Census ACS ZIP Veteran inputs now vary by Atlanta ZIP and feed the Opportunity Engine; ranked rows moved from neutral fallback/`ESTIMATED` to differentiated Veteran Need scores with `MEDIUM` confidence.
+- Hardened the Census ZCTA collector so HTTP 200 HTML/error responses are detected and surfaced instead of disappearing as silent `null` fallbacks.
+- Added persisted/visible Census diagnostics to distinguish missing/invalid credentials from scoring issues; production testing identified an unactivated Census API key as the actual credential failure.
+- Incremented the report engine version so source-coverage changes invalidate semantically stale saved reports instead of leaving old output behind a freshness cooldown.
+- Fixed ranked-ZIP Housing Search handoff so explicit project/ZIP context refreshes city/state and clears stale saved result/map state; verified Atlanta, GA + ZIP 30314 in production.
+- Added engineering protocol rules for stale-branch protection, non-JSON API responses, credential activation/validity checks, no-repeat debugging, active-route verification, report invalidation, and coherent downstream handoffs.
+
 ## [0.2.0] - 2026-08-20
 
 ### Added
