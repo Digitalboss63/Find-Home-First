@@ -31,7 +31,7 @@ export async function runMarketIntelligenceJob(input: RunJobInput): Promise<RunJ
     const [pit, fmr, census, rentcast, incomeLimits, chas] = await Promise.all([
       collectHudPit(geo, { fetchFn }).catch((e) => fallback("hud_pit", "HUD", "PIT Count", e)),
       collectHudFmr(geo, { fetchFn }).catch((e) => fallback("hud_fmr", "HUD", "FMR", e)),
-      collectCensusAcs(geo, { fetchFn }).catch((e) => fallback("census_acs", "Census", "ACS", e)),
+      collectCensusAcs(geo, { fetchFn, censusKey: process.env.CENSUS_API_KEY }).catch((e) => fallback("census_acs", "Census", "ACS", e)),
       collectRentCastMarket(geo, { fetchFn, apiKey: process.env.RENTCAST_API_KEY }).catch((e) => fallback("rentcast_market", "RentCast", "Rental Listings", e)),
       collectHudIncomeLimits(geo, { fetchFn }).catch((e) => fallback("hud_income_limits", "HUD", "Income Limits", e)),
       collectHudChas(geo, { fetchFn }).catch((e) => fallback("hud_chas", "HUD", "CHAS", e)),
@@ -52,7 +52,18 @@ export async function runMarketIntelligenceJob(input: RunJobInput): Promise<RunJ
       : [scoreRegionalFallbackOpportunity(collectedData)];
     snapshot.opportunityRankings = opportunityRankings;
 
-    const sourcesSummary = JSON.stringify({ pit: pit.status, fmr: fmr.status, census: census.status, zipDemographics: zipDemographics.status, rentcast: rentcast.status, vaPrograms: vaPrograms.status, incomeLimits: incomeLimits.status, chas: chas.status });
+    const sourcesSummary = JSON.stringify({
+      pit: pit.status,
+      fmr: fmr.status,
+      census: census.status,
+      censusError: census.error ?? null,
+      zipDemographics: zipDemographics.status,
+      zipDemographicsError: zipDemographics.error ?? null,
+      rentcast: rentcast.status,
+      vaPrograms: vaPrograms.status,
+      incomeLimits: incomeLimits.status,
+      chas: chas.status,
+    });
     const savedReportId = await saveReport(db, { id: reportId, organizationId, projectId, jobId, version, status: "complete", reportJson: JSON.stringify(snapshot), dataThroughDate: snapshot.dataThroughDate });
     await saveOpportunityScores(db, organizationId, projectId, opportunityRankings);
     await updateJobStatus(db, jobId, "complete", { sourcesSummary, completedAt: new Date() });
