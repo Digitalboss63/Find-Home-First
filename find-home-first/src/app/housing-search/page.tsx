@@ -404,6 +404,7 @@ export default async function HousingSearchPage({ searchParams }: PageProps) {
         </div>
       )}
       <PropertySearchClient
+        key={`${projectId}:${initialDraft.city}:${initialDraft.state}:${initialDraft.zipCode}`}
         initialDraft={initialDraft}
         savedLeadCount={savedLeads?.length ?? 0}
         savedLeads={savedLeads ?? []}
