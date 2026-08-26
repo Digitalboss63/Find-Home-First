@@ -16,6 +16,7 @@
  *   - Explicit ranked-ZIP selections go through /housing-search/handoff so the
  *     selected project/city/state/ZIP is persisted before Find Properties opens.
  *   - Main-workspace navigation resumes the user's most recently saved search.
+ *   - Retired diagnostics never remain as operator destinations.
  */
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
@@ -34,6 +35,17 @@ function getRefererPath(request: Request): string | null {
 
 export default clerkMiddleware(async (_auth, request) => {
   const pathname = request.nextUrl.pathname;
+
+  // The temporary write-check route is retired. If a stale tab, browser history,
+  // or cached navigation reaches it, send the operator back to the real search.
+  if (pathname === "/housing-search/write-check") {
+    const projectId = request.nextUrl.searchParams.get("project");
+    const target = request.nextUrl.clone();
+    target.pathname = projectId ? "/housing-search" : "/housing-search/resume";
+    target.search = "";
+    if (projectId) target.searchParams.set("project", projectId);
+    return NextResponse.redirect(target);
+  }
 
   if (pathname === "/housing-search") {
     const rankedZip = request.nextUrl.searchParams.get("zip");
