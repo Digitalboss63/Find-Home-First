@@ -12,9 +12,10 @@
  * unauthenticated requests to protected pages receive a 401/redirect
  * from auth.protect() inside requireOrganization().
  *
- * Main-workspace navigation to Find Properties resumes the user's most recently
- * saved property-search draft from the database. Explicit ranked-ZIP and project
- * navigation remain untouched.
+ * Property-search navigation rules:
+ *   - Explicit ranked-ZIP selections go through /housing-search/handoff so the
+ *     selected project/city/state/ZIP is persisted before Find Properties opens.
+ *   - Main-workspace navigation resumes the user's most recently saved search.
  */
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
@@ -36,12 +37,22 @@ export default clerkMiddleware(async (_auth, request) => {
 
   if (pathname === "/housing-search") {
     const rankedZip = request.nextUrl.searchParams.get("zip");
+    const projectId = request.nextUrl.searchParams.get("project");
     const refererPath = getRefererPath(request);
 
-    // Main navigation means "resume my property-search work". Do not trust a
-    // stale project query carried by browser/client navigation; resolve the
-    // newest saved draft server-side instead. Ranked-ZIP handoffs remain explicit
-    // and therefore bypass this redirect.
+    // A ranked ZIP is explicit user intent. Persist the selection first, then
+    // let the handoff route redirect to the normal project-scoped search page.
+    if (rankedZip && projectId) {
+      const target = request.nextUrl.clone();
+      target.pathname = "/housing-search/handoff";
+      target.search = "";
+      target.searchParams.set("project", projectId);
+      target.searchParams.set("zip", rankedZip);
+      return NextResponse.redirect(target);
+    }
+
+    // Main navigation means "resume my property-search work". Resolve the newest
+    // saved draft server-side instead of trusting stale browser project state.
     if (!rankedZip && refererPath && MAIN_WORKSPACE_PATHS.has(refererPath)) {
       const target = request.nextUrl.clone();
       target.pathname = "/housing-search/resume";
