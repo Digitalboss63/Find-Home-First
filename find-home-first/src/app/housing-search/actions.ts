@@ -405,8 +405,8 @@ export interface OwnerResult {
  * Persists the owner to property_owners on first fetch.
  * Returns ownerId so callers can link it to a saved lead immediately.
  *
- * Flow A (owner first, lead later): caller stores the returned ownerId in state
- *   and passes it to saveLeadAction ? linkOwnerToLeadAction automatically.
+ * Flow A (owner first, lead later): saveLeadAction recovers the cached owner by
+ *   RentCast property ID even if the client does not retain ownerId.
  * Flow B (lead first, owner later): caller calls linkOwnerToLeadAction with
  *   the persisted ownerId after fetching.
  */
@@ -492,7 +492,7 @@ export interface SaveLeadResult {
  * different projects by the same organization.
  *
  * Supports both orderings:
- *   A (owner first): pass ownerId to link immediately on save.
+ *   A (owner first): recover the cached owner from externalId and link on save.
  *   B (lead first):  call linkOwnerToLeadAction afterward.
  */
 export async function saveLeadAction(input: {
@@ -517,7 +517,7 @@ export async function saveLeadAction(input: {
   listingEmail?: string;
   opportunityScore?: number;
   opportunitySignals?: string;
-  /** ownerId returned from fetchOwnerAction (sequence A: owner fetched first) */
+  /** Optional explicit ownerId returned from fetchOwnerAction. */
   ownerId?: string;
   notes?: string;
 }): Promise<SaveLeadResult> {
@@ -535,9 +535,17 @@ export async function saveLeadAction(input: {
     return { ok: false, error: "Address is required" };
   }
 
-  // If ownerId provided (sequence A: owner was fetched before lead was saved),
-  // accept it — updateLeadOwner will verify org ownership before writing.
-  const verifiedOwnerId = input.ownerId || undefined;
+  // Owner-first flow must not depend on transient browser state. Owner lookups are
+  // cached by RentCast property ID, so recover that cached owner when the listing
+  // is saved even if the client did not retain ownerId from fetchOwnerAction.
+  let verifiedOwnerId = input.ownerId || undefined;
+  if (!verifiedOwnerId && input.source === "rentcast" && input.externalId) {
+    const cachedOwner = await getPropertyOwnerByRentcastId(
+      organizationId,
+      input.externalId
+    );
+    verifiedOwnerId = cachedOwner?.id;
+  }
 
   const result = await savePropertyLead(organizationId, {
     ...input,
@@ -547,9 +555,16 @@ export async function saveLeadAction(input: {
     return { ok: false, error: "Could not save property lead." };
   }
 
-  // Sequence A: link owner immediately if ownerId was provided and lead is new
-  if (verifiedOwnerId && !result.duplicate) {
-    await updateLeadOwner(organizationId, result.id, verifiedOwnerId);
+  // Link whenever an owner is known. This also repairs an existing duplicate lead
+  // that was saved before its cached owner was connected.
+  if (verifiedOwnerId) {
+    const linked = await updateLeadOwner(organizationId, result.id, verifiedOwnerId);
+    if (!linked) {
+      console.warn("[housing-search] saved lead but owner link failed", {
+        leadId: result.id,
+        ownerId: verifiedOwnerId,
+      });
+    }
   }
 
   return { ok: true, leadId: result.id, duplicate: result.duplicate };
