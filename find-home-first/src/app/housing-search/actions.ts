@@ -10,6 +10,7 @@
  */
 "use server";
 
+import { unstable_rethrow } from "next/navigation";
 import { requireOrganization } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
@@ -205,6 +206,7 @@ export async function searchPropertiesAction(
   try {
     ctx = await requireEligibleProject(draft.projectId);
   } catch (err) {
+    unstable_rethrow(err);
     const msg = err instanceof Error ? err.message : "Project not eligible.";
     return { listings: [], error: msg };
   }
@@ -311,6 +313,7 @@ export async function searchThisAreaAction(input: {
   try {
     ctx = await requireEligibleProject(input.projectId);
   } catch (err) {
+    unstable_rethrow(err);
     const msg = err instanceof Error ? err.message : "Project not eligible.";
     return { listings: [], error: msg };
   }
@@ -419,6 +422,7 @@ export async function fetchOwnerAction(
   try {
     ctx = await requireEligibleProject(projectId);
   } catch (err) {
+    unstable_rethrow(err);
     const msg = err instanceof Error ? err.message : "Project not eligible.";
     return { owner: null, ownerId: null, error: msg };
   }
@@ -526,6 +530,7 @@ export async function saveLeadAction(input: {
   try {
     ctx = await requireEligibleProject(input.projectId);
   } catch (err) {
+    unstable_rethrow(err);
     const msg = err instanceof Error ? err.message : "Project not eligible.";
     return { ok: false, error: msg };
   }

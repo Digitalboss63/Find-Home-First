@@ -6,6 +6,13 @@
  * synchronous and must not import server-only code.
  */
 
+/**
+ * Increment this whenever the RentCast result shape or normalizer logic changes
+ * in a way that makes old cached snapshots structurally incompatible with the
+ * current code. Mismatched snapshots are discarded and a fresh fetch is forced.
+ */
+const PROPERTY_RESULTS_SCHEMA_VERSION = 2;
+
 export interface PropertySearchFingerprintInput {
   city?: string | null;
   state?: string | null;
@@ -38,6 +45,7 @@ export function makePropertySearchFingerprint(
   input: PropertySearchFingerprintInput
 ): string {
   return JSON.stringify({
+    resultSchemaVersion: PROPERTY_RESULTS_SCHEMA_VERSION,
     mode: "criteria",
     city: clean(input.city).toLowerCase(),
     state: clean(input.state).toUpperCase(),
@@ -55,6 +63,7 @@ export function makeAreaSearchFingerprint(
   input: AreaSearchFingerprintInput
 ): string {
   return JSON.stringify({
+    resultSchemaVersion: PROPERTY_RESULTS_SCHEMA_VERSION,
     mode: "map",
     latitude: Number(input.latitude.toFixed(6)),
     longitude: Number(input.longitude.toFixed(6)),
@@ -69,9 +78,15 @@ export function makeAreaSearchFingerprint(
 }
 
 /**
- * A saved fingerprint is reusable only when it belongs to a submitted search
- * and the saved snapshot is valid JSON containing an array. An empty array is
- * a valid successful result and must be cacheable to avoid paid repeat calls.
+ * A saved fingerprint is reusable only when it belongs to a submitted search,
+ * the saved snapshot is valid JSON containing an array, AND the stored
+ * fingerprint's resultSchemaVersion matches the current schema version.
+ *
+ * A version mismatch means the cached data was produced by an older normalizer.
+ * Returning null forces a fresh paid RentCast fetch on the next search.
+ *
+ * An empty array is a valid successful result and must be cacheable to avoid
+ * paid repeat calls — as long as the schema version matches.
  */
 export function restoreSuccessfulFingerprint(input: {
   submitted: boolean;
@@ -79,6 +94,16 @@ export function restoreSuccessfulFingerprint(input: {
   resultsSnapshot: string | null;
 }): string | null {
   if (!input.submitted || !input.queryFingerprint || input.resultsSnapshot == null) {
+    return null;
+  }
+
+  // Validate schema version before trusting any cached snapshot.
+  try {
+    const fp = JSON.parse(input.queryFingerprint) as Record<string, unknown>;
+    if (fp.resultSchemaVersion !== PROPERTY_RESULTS_SCHEMA_VERSION) {
+      return null;
+    }
+  } catch {
     return null;
   }
 
