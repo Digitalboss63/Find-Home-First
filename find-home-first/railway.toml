@@ -4,6 +4,6 @@ buildCommand = "npm run build"
 [deploy]
 startCommand = "npm start"
 preDeployCommand = "npm run db:migrate"
-healthcheckPath = "/"
+healthcheckPath = "/healthcheck.html"
 healthcheckTimeout = 60
 restartPolicyType = "on_failure"
