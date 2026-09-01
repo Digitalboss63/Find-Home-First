@@ -156,7 +156,38 @@ async function rentcastFetch(
 
 // ─── Normalize listing ────────────────────────────────────────────────────────
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value != null && String(value).trim() !== "" ? String(value) : null;
+}
+
 function normalizeListing(raw: Record<string, unknown>): RentCastListing {
+  // Current RentCast listing schema nests contact data under listingAgent and
+  // listingOffice. Keep the older flat listedBy* fields as compatibility
+  // fallbacks for cached/legacy payloads.
+  const listingAgent = asRecord(raw.listingAgent);
+  const listingOffice = asRecord(raw.listingOffice);
+
+  const listedBy =
+    nullableString(listingAgent?.name) ??
+    nullableString(raw.listedBy) ??
+    nullableString(listingOffice?.name);
+
+  const listedByPhone =
+    nullableString(listingAgent?.phone) ??
+    nullableString(raw.listedByPhone) ??
+    nullableString(listingOffice?.phone);
+
+  const listedByEmail =
+    nullableString(listingAgent?.email) ??
+    nullableString(raw.listedByEmail) ??
+    nullableString(listingOffice?.email);
+
   return {
     id: String(raw.id ?? ""),
     formattedAddress: String(raw.formattedAddress ?? raw.addressLine1 ?? ""),
@@ -169,15 +200,19 @@ function normalizeListing(raw: Record<string, unknown>): RentCastListing {
     bathrooms: raw.bathrooms != null ? Number(raw.bathrooms) : null,
     price: raw.price != null ? Number(raw.price) : null,
     listingType: raw.listingType != null ? String(raw.listingType) : null,
-    listingDate: raw.listingDate != null ? String(raw.listingDate) : null,
+    // Current field is listedDate. listingDate is retained as a legacy fallback.
+    listingDate:
+      raw.listedDate != null
+        ? String(raw.listedDate)
+        : raw.listingDate != null
+        ? String(raw.listingDate)
+        : null,
     daysOnMarket: raw.daysOnMarket != null ? Number(raw.daysOnMarket) : null,
     lastSeenDate: raw.lastSeenDate != null ? String(raw.lastSeenDate) : null,
     status: raw.status != null ? String(raw.status) : null,
-    listedBy: raw.listedBy != null ? String(raw.listedBy) : null,
-    listedByPhone:
-      raw.listedByPhone != null ? String(raw.listedByPhone) : null,
-    listedByEmail:
-      raw.listedByEmail != null ? String(raw.listedByEmail) : null,
+    listedBy,
+    listedByPhone,
+    listedByEmail,
     latitude: raw.latitude != null ? Number(raw.latitude) : null,
     longitude: raw.longitude != null ? Number(raw.longitude) : null,
   };
