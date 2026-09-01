@@ -5,6 +5,8 @@ import { requireOrganization } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { propertyLeads, propertyOwners } from "@/db/schema";
 import { projectBelongsToOrg } from "@/lib/repository";
+import { enrichScoreWithOwner } from "@/lib/opportunity-score";
+import type { RentCastListing, RentCastOwner } from "@/lib/rentcast";
 
 export interface WorkspaceOwner {
   id: string;
@@ -23,10 +25,25 @@ export interface WorkspaceOwner {
   contactSource: string | null;
 }
 
+interface WorkspaceOwnerResult {
+  ok: boolean;
+  owner: WorkspaceOwner | null;
+  repaired?: boolean;
+  opportunityScore?: number | null;
+  opportunitySignals?: string | null;
+  error?: string;
+}
+
+function numericValue(value: string | null): number | null {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export async function getLinkedOwnerForWorkspaceAction(
   leadId: string,
   projectId: string
-): Promise<{ ok: boolean; owner: WorkspaceOwner | null; repaired?: boolean; error?: string }> {
+): Promise<WorkspaceOwnerResult> {
   const { organizationId } = await requireOrganization();
   const db = getDb();
   if (!db) return { ok: false, owner: null, error: "Database unavailable." };
@@ -39,6 +56,22 @@ export async function getLinkedOwnerForWorkspaceAction(
       ownerId: propertyLeads.ownerId,
       source: propertyLeads.source,
       externalId: propertyLeads.externalId,
+      address: propertyLeads.address,
+      city: propertyLeads.city,
+      state: propertyLeads.state,
+      zip: propertyLeads.zip,
+      propertyType: propertyLeads.propertyType,
+      bedrooms: propertyLeads.bedrooms,
+      bathrooms: propertyLeads.bathrooms,
+      monthlyRent: propertyLeads.monthlyRent,
+      listingDate: propertyLeads.listingDate,
+      daysOnMarket: propertyLeads.daysOnMarket,
+      lastSeenDate: propertyLeads.lastSeenDate,
+      listingStatus: propertyLeads.listingStatus,
+      listingContact: propertyLeads.listingContact,
+      listingPhone: propertyLeads.listingPhone,
+      listingEmail: propertyLeads.listingEmail,
+      occupancyStatus: propertyLeads.occupancyStatus,
     })
     .from(propertyLeads)
     .where(
@@ -71,6 +104,7 @@ export async function getLinkedOwnerForWorkspaceAction(
   };
 
   let ownerId = lead.ownerId;
+  let owner: WorkspaceOwner | null = null;
   let repaired = false;
 
   // Self-heal older RentCast leads: owner lookup may already be cached even when
@@ -87,36 +121,91 @@ export async function getLinkedOwnerForWorkspaceAction(
       )
       .limit(1);
 
-    const cachedOwner = cachedRows[0];
-    if (cachedOwner) {
-      ownerId = cachedOwner.id;
-      await db
-        .update(propertyLeads)
-        .set({ ownerId, updatedAt: new Date() })
-        .where(
-          and(
-            eq(propertyLeads.id, leadId),
-            eq(propertyLeads.organizationId, organizationId),
-            eq(propertyLeads.projectId, projectId)
-          )
-        );
+    owner = cachedRows[0] ?? null;
+    if (owner) {
+      ownerId = owner.id;
       repaired = true;
-      return { ok: true, owner: cachedOwner, repaired };
     }
   }
 
-  if (!ownerId) return { ok: true, owner: null, repaired };
+  if (!owner && ownerId) {
+    const ownerRows = await db
+      .select(ownerSelection)
+      .from(propertyOwners)
+      .where(
+        and(
+          eq(propertyOwners.id, ownerId),
+          eq(propertyOwners.organizationId, organizationId)
+        )
+      )
+      .limit(1);
+    owner = ownerRows[0] ?? null;
+  }
 
-  const ownerRows = await db
-    .select(ownerSelection)
-    .from(propertyOwners)
+  if (!owner || !ownerId) {
+    return { ok: true, owner: null, repaired };
+  }
+
+  // The listing card displays the owner-enriched score after owner lookup, but
+  // older saved leads retained the pre-owner listing-only score. Recalculate
+  // from the same deterministic score engine and persist the enriched result.
+  const listing: RentCastListing = {
+    id: lead.externalId ?? leadId,
+    formattedAddress: lead.address,
+    addressLine1: lead.address,
+    city: lead.city ?? "",
+    state: lead.state ?? "",
+    zipCode: lead.zip ?? "",
+    propertyType: lead.propertyType,
+    bedrooms: lead.bedrooms,
+    bathrooms: numericValue(lead.bathrooms),
+    price: numericValue(lead.monthlyRent),
+    listingType: null,
+    listingDate: lead.listingDate,
+    daysOnMarket: lead.daysOnMarket,
+    lastSeenDate: lead.lastSeenDate,
+    status: lead.listingStatus,
+    listedBy: lead.listingContact,
+    listedByPhone: lead.listingPhone,
+    listedByEmail: lead.listingEmail,
+    latitude: null,
+    longitude: null,
+  };
+
+  const rentCastOwner: RentCastOwner = {
+    id: owner.id,
+    formattedAddress: lead.address,
+    ownerName: owner.name,
+    ownerType: owner.ownerType,
+    mailingAddress: owner.mailingAddress,
+    ownerOccupied: owner.ownerOccupied,
+    mailingDiffersFromProperty: owner.mailingDiffersFromProperty ?? false,
+  };
+
+  const enriched = enrichScoreWithOwner(listing, rentCastOwner, lead.occupancyStatus);
+  const opportunitySignals = JSON.stringify(enriched.signals);
+
+  await db
+    .update(propertyLeads)
+    .set({
+      ownerId,
+      opportunityScore: enriched.score,
+      opportunitySignals,
+      updatedAt: new Date(),
+    })
     .where(
       and(
-        eq(propertyOwners.id, ownerId),
-        eq(propertyOwners.organizationId, organizationId)
+        eq(propertyLeads.id, leadId),
+        eq(propertyLeads.organizationId, organizationId),
+        eq(propertyLeads.projectId, projectId)
       )
-    )
-    .limit(1);
+    );
 
-  return { ok: true, owner: ownerRows[0] ?? null, repaired };
+  return {
+    ok: true,
+    owner,
+    repaired,
+    opportunityScore: enriched.score,
+    opportunitySignals,
+  };
 }
