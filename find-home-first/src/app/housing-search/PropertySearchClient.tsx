@@ -1181,23 +1181,26 @@ export default function PropertySearchClient({
   const [maxDaysListed, setMaxDaysListed] = useState(initialDraft.maxDaysListed);
   const [listingStatus, setListingStatus] = useState(initialDraft.listingStatus);
 
+  // restoreSuccessfulFingerprint validates schema version — returns null on mismatch.
+  // All snapshot-dependent state uses this gate so stale pre-upgrade results are
+  // never displayed; the user must run a fresh search to repopulate results.
+  const _restoredFp = restoreSuccessfulFingerprint(initialDraft);
+
   const [submitted, setSubmitted] = useState(initialDraft.submitted);
-  // Restore last result set from snapshot — no re-fetch on remount.
+  // Restore last result set from snapshot — only when schema version is current.
   const [results, setResults] = useState<RentCastListing[]>(() =>
-    parseSnapshot(initialDraft.resultsSnapshot)
+    _restoredFp ? parseSnapshot(initialDraft.resultsSnapshot) : []
   );
-  const lastSuccessfulFp = useRef<string | null>(
-    restoreSuccessfulFingerprint(initialDraft)
-  );
+  const lastSuccessfulFp = useRef<string | null>(_restoredFp);
   const resultsSnapshotRef = useRef<string | null>(
-    restoreSuccessfulFingerprint(initialDraft) ? initialDraft.resultsSnapshot : null
+    _restoredFp ? initialDraft.resultsSnapshot : null
   );
   const resultsCountRef = useRef<number>(
-    restoreSuccessfulFingerprint(initialDraft) ? parseSnapshot(initialDraft.resultsSnapshot).length : 0
+    _restoredFp ? parseSnapshot(initialDraft.resultsSnapshot).length : 0
   );
-  const lastSearchAtRef = useRef<Date | null>(restoredSearchAt);
+  const lastSearchAtRef = useRef<Date | null>(_restoredFp ? restoredSearchAt : null);
   const [lastSuccessfulSearchAt, setLastSuccessfulSearchAt] = useState<Date | null>(
-    restoredSearchAt
+    _restoredFp ? restoredSearchAt : null
   );
   const [showingCachedResults, setShowingCachedResults] = useState(false);
   const [criteriaChanged, setCriteriaChanged] = useState(false);
