@@ -94,7 +94,7 @@ export async function requireOrganization(
 
   if (!options.allowInactiveBilling && !platformOwner) {
     const billing = await getOrganizationBilling(membership.organizationId);
-    if (!hasBillingAccess(billing.stripeSubscriptionStatus)) {
+    if (!billing.plan || !hasBillingAccess(billing.stripeSubscriptionStatus)) {
       redirect("/plan?billing=required");
     }
   }
