@@ -9,6 +9,7 @@ import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { users, organizationMemberships } from "@/db/schema";
+import { getOrganizationBilling, hasBillingAccess } from "@/lib/billing";
 
 export interface AuthUser {
   clerkUserId: string;
@@ -23,6 +24,11 @@ export interface AuthContext {
   role: "owner" | "staff";
 }
 
+export interface RequireOrganizationOptions {
+  /** Allows access to Plan & Billing before a subscription is active. */
+  allowInactiveBilling?: boolean;
+}
+
 /** Asserts Clerk auth. Returns clerkUserId or redirects. */
 export async function requireUser(): Promise<string> {
   const { userId } = await auth();
@@ -31,10 +37,16 @@ export async function requireUser(): Promise<string> {
 }
 
 /**
- * Asserts auth + organization membership.
+ * Asserts auth + organization membership + active organization billing.
  * organizationId is ALWAYS from the server session — never client-supplied.
+ *
+ * The platform owner is billing-exempt so administrative access can never be
+ * locked out by Stripe state. Plan & Billing opts out of the billing guard so
+ * an unpaid organization can subscribe.
  */
-export async function requireOrganization(): Promise<AuthContext> {
+export async function requireOrganization(
+  options: RequireOrganizationOptions = {}
+): Promise<AuthContext> {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
@@ -77,6 +89,16 @@ export async function requireOrganization(): Promise<AuthContext> {
   if (membershipRows.length === 0) redirect("/onboarding");
 
   const membership = membershipRows[0];
+  const platformOwnerId = process.env.PLATFORM_OWNER_CLERK_USER_ID;
+  const platformOwner = !!platformOwnerId && userId === platformOwnerId;
+
+  if (!options.allowInactiveBilling && !platformOwner) {
+    const billing = await getOrganizationBilling(membership.organizationId);
+    if (!hasBillingAccess(billing.stripeSubscriptionStatus)) {
+      redirect("/plan?billing=required");
+    }
+  }
+
   return {
     user: {
       clerkUserId: userId,
