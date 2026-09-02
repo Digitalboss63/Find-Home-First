@@ -6,7 +6,10 @@ import type {
   LeadWorkspaceProps as BaseLeadWorkspaceProps,
   OwnerContact as BaseOwnerContact,
 } from "./LeadWorkspaceBase";
-import { getLinkedOwnerForWorkspaceAction } from "./owner-workspace-actions";
+import {
+  getLinkedOwnerForWorkspaceAction,
+  type WorkspaceLeadRefresh,
+} from "./owner-workspace-actions";
 
 export type {
   ActivityItem,
@@ -21,14 +24,15 @@ export type {
  * Thin client wrapper around the existing workspace.
  *
  * Resolves the authenticated, project-scoped owner when the workspace opens.
- * The server also repairs older RentCast owner links and recalculates the
- * persisted owner-enriched opportunity score so the workspace matches the
- * score shown after owner lookup on the listing card.
+ * The server also repairs older RentCast owner links, refreshes provider-owned
+ * listing metadata from the latest successful search snapshot, and recalculates
+ * the persisted owner-enriched opportunity score.
  */
 export function LeadWorkspace(props: BaseLeadWorkspaceProps) {
   const [owner, setOwner] = useState<BaseOwnerContact | null>(
     props.initialOwner ?? null
   );
+  const [leadRefresh, setLeadRefresh] = useState<WorkspaceLeadRefresh | null>(null);
   const [enrichedScore, setEnrichedScore] = useState<number | null>(null);
   const [enrichedSignals, setEnrichedSignals] = useState<string | null>(null);
 
@@ -39,6 +43,7 @@ export function LeadWorkspace(props: BaseLeadWorkspaceProps) {
       .then((result) => {
         if (cancelled || !result.ok) return;
         setOwner(result.owner);
+        setLeadRefresh(result.leadRefresh ?? null);
         if (result.opportunityScore != null) {
           setEnrichedScore(result.opportunityScore);
         }
@@ -58,10 +63,11 @@ export function LeadWorkspace(props: BaseLeadWorkspaceProps) {
   const lead = useMemo(
     () => ({
       ...props.lead,
+      ...(leadRefresh ?? {}),
       opportunityScore: enrichedScore ?? props.lead.opportunityScore,
       opportunitySignals: enrichedSignals ?? props.lead.opportunitySignals,
     }),
-    [props.lead, enrichedScore, enrichedSignals]
+    [props.lead, leadRefresh, enrichedScore, enrichedSignals]
   );
 
   return (
