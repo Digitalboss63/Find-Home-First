@@ -215,7 +215,12 @@ export async function getOrganizationBilling(
     stripeCustomerId: row.stripe_customer_id,
     stripeSubscriptionId: row.stripe_subscription_id,
     stripeSubscriptionStatus: row.stripe_subscription_status,
-    updatedAt: row.updated_at ? new Date(row.updated_at) : null,
+    updatedAt:
+      row.updated_at instanceof Date
+        ? row.updated_at
+        : row.updated_at
+          ? new Date(row.updated_at)
+          : null,
   };
 }
 
