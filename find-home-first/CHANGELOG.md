@@ -34,6 +34,18 @@
 - Fixed ranked-ZIP Housing Search handoff so explicit project/ZIP context refreshes city/state and clears stale saved result/map state; verified Atlanta, GA + ZIP 30314 in production.
 - Added engineering protocol rules for stale-branch protection, non-JSON API responses, credential activation/validity checks, no-repeat debugging, active-route verification, report invalidation, and coherent downstream handoffs.
 
+### Controlled beta acceptance completed - 2026-09-02
+
+- Verified the production workflow from ranked ZIP targeting into property search, saved lead handling, owner enrichment, and Owner Outreach.
+- Fixed saved-lead owner handoff so cached RentCast owner data is restored and persisted when the outreach workspace opens.
+- Persisted the owner-enriched opportunity score so the saved lead workspace matches the evidence shown during owner lookup.
+- Updated RentCast normalization to current `listedDate`, `listingAgent`, and `listingOffice` response fields while preserving legacy fallbacks.
+- Versioned saved property-result snapshots so normalizer changes invalidate stale cached results without disabling paid-result caching.
+- Preserved Next.js framework redirects with `unstable_rethrow`, preventing internal `NEXT_REDIRECT` exceptions from appearing as user-facing errors.
+- Added saved-lead self-healing from the latest normalized RentCast snapshot so current listing dates and listing-contact details reach existing leads without another API request or overwriting workflow data.
+- Verified production listing contact handoff with a real saved lead: listing contact name, phone, and email display separately from property-owner identity and remain explicitly unverified as owner data.
+- Removed the temporary `/housing-search/diagnostic`, `/housing-search/schema-check`, and `/housing-search/write-check` production routes before the controlled beta release.
+
 ## [0.2.0] - 2026-08-20
 
 ### Added
