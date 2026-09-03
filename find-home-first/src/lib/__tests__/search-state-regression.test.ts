@@ -60,11 +60,12 @@ describe("property search fingerprints", () => {
 
 describe("successful snapshot restoration", () => {
   it("restores a fingerprint for an empty successful snapshot", () => {
+    const fingerprint = makePropertySearchFingerprint(baseCriteria);
     expect(restoreSuccessfulFingerprint({
       submitted: true,
-      queryFingerprint: "fp-zero",
+      queryFingerprint: fingerprint,
       resultsSnapshot: "[]",
-    })).toBe("fp-zero");
+    })).toBe(fingerprint);
   });
 
   it("rejects missing, malformed, and non-array snapshots", () => {

@@ -66,6 +66,8 @@ function billingNotice(code: string | undefined): string | null {
   if (code === "success") return "Checkout completed. Stripe is confirming your subscription; your plan will activate automatically.";
   if (code === "canceled") return "Checkout was canceled. No subscription was created.";
   if (code === "already-active") return "Your organization already has an active subscription.";
+  if (code === "portal-unavailable") return "Billing management is not available for this organization yet.";
+  if (code === "portal-error") return "Stripe Billing could not be opened. Please try again or contact support.";
   if (code === "error") return "Stripe Checkout could not be started. Please try again or contact support.";
   return null;
 }
@@ -80,6 +82,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
   const active =
     !!billing.plan && hasBillingAccess(billing.stripeSubscriptionStatus);
   const notice = billingNotice(params.billing);
+  const canManageBilling = ctx.role === "owner" && !!billing.stripeCustomerId;
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 lg:px-10">
@@ -100,7 +103,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
 
       {(notice || active) && (
         <div
-          className="rounded-lg px-4 py-3.5 text-sm mb-8"
+          className="rounded-lg px-4 py-3.5 text-sm mb-8 space-y-3"
           style={{
             backgroundColor: "var(--color-surface-soft)",
             border: "1px solid var(--color-border)",
@@ -108,15 +111,32 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
           }}
           role="status"
         >
-          {active ? (
-            <p>
-              Billing active — <strong>{planLabel(billing.plan)}</strong>
-              {billing.stripeSubscriptionStatus
-                ? ` · ${billing.stripeSubscriptionStatus}`
-                : ""}
-            </p>
-          ) : (
-            <p>{notice}</p>
+          {notice && <p>{notice}</p>}
+
+          {active && (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p>
+                Billing active — <strong>{planLabel(billing.plan)}</strong>
+                {billing.stripeSubscriptionStatus
+                  ? ` · ${billing.stripeSubscriptionStatus}`
+                  : ""}
+              </p>
+
+              {canManageBilling && (
+                <form action="/api/billing/portal" method="post">
+                  <button
+                    type="submit"
+                    className="rounded-lg px-4 py-2 text-sm font-semibold transition-opacity hover:opacity-90"
+                    style={{
+                      backgroundColor: "var(--color-primary)",
+                      color: "#fff",
+                    }}
+                  >
+                    Manage Billing
+                  </button>
+                </form>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -257,7 +277,9 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                       opacity: plan.recommended ? undefined : 0.6,
                     }}
                   >
-                    Contact support to change an active subscription.
+                    {canManageBilling
+                      ? "Use Manage Billing above for subscription options."
+                      : "Your organization owner manages billing."}
                   </div>
                 ) : ctx.role === "owner" ? (
                   <form action="/api/billing/checkout" method="post">
