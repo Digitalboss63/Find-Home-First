@@ -46,6 +46,24 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - When a handoff intentionally changes search context, clear stale result/map state that could make old data appear to belong to the new target.
 - Acceptance-test the destination values, not just the URL. Verify the same project, selected ZIP, city/state, and intended search scope after navigation.
 
+## Production authentication and owner-access gate
+
+Run this gate every time a Clerk-backed app is promoted from development/test to production, whenever a production Clerk instance is recreated, or whenever domains/auth providers change. Do not call the release production-ready until every item below is verified live.
+
+- **Production Clerk instance:** confirm the live site is using the Production instance, not Development. Use the production `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` in the production runtime and redeploy after changing them.
+- **Production domains/DNS:** verify the primary custom domain in Clerk and all required Clerk DNS records before testing sign-in. Also verify the application apex and `www` records still resolve to the hosting provider after Clerk DNS changes.
+- **Platform owner identity:** Clerk Development and Production user IDs are different identities. Copy the actual Production Clerk User ID for the platform owner and set `PLATFORM_OWNER_CLERK_USER_ID` in production. Never carry a development user ID into production. Verify the owner-only Back Office link is visible after redeploy and that `/back-office` opens successfully.
+- **Support identity:** when billing-support users are enabled, use Production Clerk user IDs in `BILLING_SUPPORT_CLERK_USER_IDS`; development IDs are invalid in production.
+- **Google OAuth custom credentials:** production Clerk instances must use the production Google OAuth client credentials configured in Clerk. Do not rely on development/shared credentials.
+- **Google callback URI:** copy the **Authorized Redirect URI shown by the active Clerk Production Google connection** and add that exact URI to the matching Google Cloud OAuth 2.0 Web application under **Authorized redirect URIs**. Do not infer or reuse an old callback URI. Any Clerk custom-domain change can change this URI.
+- **Google origins:** add the production application origins used by the app (for example apex and `www`, when both are supported) to the Google OAuth Web client where required.
+- **Google consent/publishing:** verify the Google OAuth consent configuration is appropriate for production use and not accidentally restricted to a temporary testing audience.
+- **Live acceptance:** test both the normal email sign-in path and Google sign-in on the real production domain. A successful Clerk dashboard verification is not sufficient; the browser must complete sign-in without `client_id`, `redirect_uri_mismatch`, or development-mode errors.
+- **Owner authorization acceptance:** after signing in as the platform owner, verify the **Back Office** link appears in the operator sidebar and that Billing Support, Plans, Organizations, Audit Log, and other owner-only routes enforce the intended authorization.
+- **Non-owner acceptance:** verify a normal customer/organization user does not gain platform-owner Back Office access.
+- **Production presentation:** remove or suppress development/demo-only labels and notices before live release unless the product is intentionally running a demo environment.
+- Record the production Clerk instance, verified domains, owner-access verification, Google sign-in result, and release commit in the release/change report. Do not record secret values.
+
 ## Required verification before release
 
 - Use repository-local executables (`./node_modules/.bin/...`) when available so validation does not depend on an `npx` download or prompt.
