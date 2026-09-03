@@ -122,7 +122,7 @@ vi.mock("@/lib/auth", () => ({
   requireOrganization: vi.fn().mockResolvedValue({ organizationId: "org-1", user: { dbUserId: "u-1" } }),
 }));
 vi.mock("next/navigation", () => ({
-  redirect: vi.fn(), permanentRedirect: vi.fn(),
+  redirect: vi.fn(), permanentRedirect: vi.fn(), unstable_rethrow: vi.fn(),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
