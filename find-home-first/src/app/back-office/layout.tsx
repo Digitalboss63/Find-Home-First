@@ -60,6 +60,14 @@ export default async function BackOfficeLayout({
               Platform
             </span>
           </Link>
+
+          <Link
+            href="/"
+            className="mt-4 flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold transition-colors"
+            style={{ color: "#fff", backgroundColor: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.14)" }}
+          >
+            ← Return to App
+          </Link>
         </div>
 
         <nav aria-label="Back office navigation" className="flex-1 px-3 pb-6">
@@ -86,7 +94,7 @@ export default async function BackOfficeLayout({
           style={{ borderColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.3)" }}
         >
           <Link href="/" className="hover:opacity-70">
-            ← Operator Workspace
+            ← Return to App
           </Link>
         </div>
       </aside>
@@ -99,8 +107,12 @@ export default async function BackOfficeLayout({
           <Link href={backOfficeHome} className="font-bold text-sm text-white">
             Back Office
           </Link>
-          <Link href="/" className="text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>
-            Operator Workspace →
+          <Link
+            href="/"
+            className="rounded-md px-3 py-1.5 text-xs font-semibold"
+            style={{ color: "#fff", backgroundColor: "rgba(255,255,255,0.12)" }}
+          >
+            ← Return to App
           </Link>
         </div>
         <nav aria-label="Mobile back office navigation" className="overflow-x-auto">
