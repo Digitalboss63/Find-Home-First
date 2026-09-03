@@ -44,10 +44,14 @@ export default async function RootLayout({
   ]);
   const adaCode =
     adaSetting?.enabled && adaSetting.value ? adaSetting.value.trim() : null;
+  const production = process.env.NODE_ENV === "production";
 
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="min-h-screen">
+        {production && (
+          <style>{`footer[role="contentinfo"] { display: none !important; }`}</style>
+        )}
         <ClerkProvider>
           <SkipLink />
           <AppShell showBackOffice={platformOwner}>
