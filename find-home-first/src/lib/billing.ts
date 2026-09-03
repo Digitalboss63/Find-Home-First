@@ -45,6 +45,11 @@ interface StripeCheckoutSessionRecord {
   metadata?: Record<string, string> | null;
 }
 
+interface StripeBillingPortalSessionRecord {
+  id: string;
+  url?: string | null;
+}
+
 interface StripeErrorResponse {
   error?: {
     message?: string;
@@ -133,6 +138,23 @@ export async function createStripeCheckoutSession(input: {
     method: "POST",
     params,
   });
+}
+
+export async function createStripeBillingPortalSession(input: {
+  stripeCustomerId: string;
+  origin: string;
+}): Promise<StripeBillingPortalSessionRecord> {
+  const params = new URLSearchParams();
+  params.set("customer", input.stripeCustomerId);
+  params.set("return_url", `${input.origin}/plan`);
+
+  return stripeRequest<StripeBillingPortalSessionRecord>(
+    "/billing_portal/sessions",
+    {
+      method: "POST",
+      params,
+    }
+  );
 }
 
 export async function retrieveStripeSubscription(
