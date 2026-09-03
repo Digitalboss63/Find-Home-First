@@ -34,7 +34,7 @@ function supportUrl(
   organizationId: string | null,
   result: string
 ): URL {
-  const url = new URL("/support/billing", publicOrigin(request));
+  const url = new URL("/back-office/billing", publicOrigin(request));
   if (organizationId) url.searchParams.set("org", organizationId);
   url.searchParams.set("result", result);
   return url;
