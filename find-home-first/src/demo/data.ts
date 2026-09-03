@@ -389,7 +389,7 @@ export const DEMO_PLANS: DemoPlan[] = [
   {
     id: "tier-2",
     name: "Tier 2",
-    price: "$79",
+    price: "$79.99",
     period: "per month — launch price",
     description:
       "For teams managing multiple coordinators and caseloads.",
