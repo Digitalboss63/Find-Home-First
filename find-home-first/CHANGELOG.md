@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Billing support controls - 2026-09-03
+
+- Added a support-only Billing Support console for platform-owner and explicitly authorized support staff.
+- Added full and partial Stripe refunds against real customer charges, with a required confirmation step and support reason/note capture.
+- Added optional immediate subscription cancellation as part of the same support action while keeping refund and cancellation as separate operations.
+- Added server-side verification that the selected Stripe charge belongs to the selected Find Home First organization before any refund is issued.
+- Added audit-log events for successful refunds, blocked refund attempts, failed refunds, support cancellations, and cancellation failures.
+- Customer-facing pages do not expose refund controls; customers may request refunds through support channels, while execution remains restricted to authorized staff.
+
 ### Stripe billing rollout - 2026-09-02
 
 - Added live monthly Stripe subscription plans for Find Home First Tier 1 and Tier 2.
