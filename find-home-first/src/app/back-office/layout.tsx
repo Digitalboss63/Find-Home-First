@@ -8,7 +8,13 @@
 import Link from "next/link";
 import { requireBillingSupport } from "@/lib/support-auth";
 
-const OWNER_NAV = [
+interface BackOfficeNavItem {
+  href: string;
+  label: string;
+  indent?: boolean;
+}
+
+const OWNER_NAV: BackOfficeNavItem[] = [
   { href: "/back-office", label: "Overview" },
   { href: "/back-office/organizations", label: "Organizations" },
   { href: "/back-office/users", label: "Users" },
@@ -21,7 +27,7 @@ const OWNER_NAV = [
   { href: "/back-office/system-health", label: "System Health" },
 ];
 
-const SUPPORT_NAV = [
+const SUPPORT_NAV: BackOfficeNavItem[] = [
   { href: "/back-office/billing", label: "Billing Support" },
 ];
 
