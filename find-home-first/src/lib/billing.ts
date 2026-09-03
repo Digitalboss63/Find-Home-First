@@ -120,7 +120,7 @@ export async function createStripeCheckoutSession(input: {
   params.set("mode", "subscription");
   params.set("line_items[0][price]", getStripePriceId(input.plan));
   params.set("line_items[0][quantity]", "1");
-  params.set("success_url", `${input.origin}/plan?billing=success`);
+  params.set("success_url", `${input.origin}/?billing=success`);
   params.set("cancel_url", `${input.origin}/plan?billing=canceled`);
   params.set("client_reference_id", input.organizationId);
   params.set("metadata[organization_id]", input.organizationId);
