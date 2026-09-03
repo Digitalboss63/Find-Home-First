@@ -5,6 +5,15 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  // AppShell intentionally synchronizes the current/saved project with
+  // sessionStorage after route changes. Keep this exception scoped to that
+  // existing navigation state bridge rather than weakening the rule globally.
+  {
+    files: ["src/components/AppShell.tsx"],
+    rules: {
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
