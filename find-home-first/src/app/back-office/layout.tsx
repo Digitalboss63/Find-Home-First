@@ -1,25 +1,25 @@
 /**
- * /back-office — Platform Owner Back Office layout.
+ * /back-office — Find Home First administrative workspace.
  *
- * SECURITY: requirePlatformOwner() is called server-side in every page.
- * This layout provides the navigation shell only — it does NOT authorize.
- * Authorization must happen inside each page/route handler individually.
- *
- * Back Office is isolated from the operator workspace AppShell.
- * Staff and organization Owners never see this layout.
+ * Platform-owner pages continue to enforce requirePlatformOwner() individually.
+ * Billing Support is also available to explicitly authorized billing-support staff.
+ * Organization owner/staff roles do not grant Back Office access.
  */
 import Link from "next/link";
-import { isPlatformOwner } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireBillingSupport } from "@/lib/support-auth";
 
-// ─── Navigation ───────────────────────────────────────────────────────────────
+interface BackOfficeNavItem {
+  href: string;
+  label: string;
+  indent?: boolean;
+}
 
-const NAV = [
+const OWNER_NAV: BackOfficeNavItem[] = [
   { href: "/back-office", label: "Overview" },
   { href: "/back-office/organizations", label: "Organizations" },
   { href: "/back-office/users", label: "Users" },
   { href: "/back-office/plans", label: "Plans" },
-  { href: "/support/billing", label: "Billing Support" },
+  { href: "/back-office/billing", label: "Billing Support" },
   { href: "/back-office/site-settings", label: "Site Settings" },
   { href: "/back-office/site-settings/integrations", label: "  Integrations", indent: true },
   { href: "/back-office/site-settings/integrations/ada-widget", label: "    ADA Widget", indent: true },
@@ -27,25 +27,29 @@ const NAV = [
   { href: "/back-office/system-health", label: "System Health" },
 ];
 
+const SUPPORT_NAV: BackOfficeNavItem[] = [
+  { href: "/back-office/billing", label: "Billing Support" },
+];
+
 export default async function BackOfficeLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Gate the entire layout. If not platform owner, redirect immediately.
-  // Individual pages also call requirePlatformOwner() for defence-in-depth.
-  const ok = await isPlatformOwner();
-  if (!ok) redirect("/access-denied");
+  const actor = await requireBillingSupport();
+  const nav = actor.isPlatformOwner ? OWNER_NAV : SUPPORT_NAV;
+  const backOfficeHome = actor.isPlatformOwner
+    ? "/back-office"
+    : "/back-office/billing";
 
   return (
     <div className="flex min-h-screen" style={{ backgroundColor: "var(--color-background)" }}>
-      {/* ── Sidebar ───────────────────────────────────────────── */}
       <aside
         className="hidden lg:flex flex-col w-52 shrink-0 fixed inset-y-0 left-0 z-20 overflow-y-auto"
         style={{ backgroundColor: "#1a1a2e", borderRight: "1px solid rgba(255,255,255,0.08)" }}
       >
         <div className="px-5 pt-6 pb-3 shrink-0">
-          <Link href="/back-office" className="block">
+          <Link href={backOfficeHome} className="block">
             <span className="text-white font-bold text-sm tracking-tight">
               Back Office
             </span>
@@ -60,7 +64,7 @@ export default async function BackOfficeLayout({
 
         <nav aria-label="Back office navigation" className="flex-1 px-3 pb-6">
           <ul className="space-y-0.5 mt-2">
-            {NAV.map(({ href, label, indent }) => (
+            {nav.map(({ href, label, indent }) => (
               <li key={href}>
                 <Link
                   href={href}
@@ -92,7 +96,7 @@ export default async function BackOfficeLayout({
         style={{ backgroundColor: "#1a1a2e", borderBottom: "1px solid rgba(255,255,255,0.08)" }}
       >
         <div className="flex items-center justify-between gap-3 mb-2">
-          <Link href="/back-office" className="font-bold text-sm text-white">
+          <Link href={backOfficeHome} className="font-bold text-sm text-white">
             Back Office
           </Link>
           <Link href="/" className="text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>
@@ -101,7 +105,7 @@ export default async function BackOfficeLayout({
         </div>
         <nav aria-label="Mobile back office navigation" className="overflow-x-auto">
           <ul className="flex gap-2 min-w-max pb-1">
-            {NAV.filter((item) => !item.indent).map(({ href, label }) => (
+            {nav.filter((item) => !item.indent).map(({ href, label }) => (
               <li key={href}>
                 <Link
                   href={href}
@@ -112,20 +116,21 @@ export default async function BackOfficeLayout({
                 </Link>
               </li>
             ))}
-            <li>
-              <Link
-                href="/back-office/site-settings/integrations/ada-widget"
-                className="block rounded-md px-3 py-1.5 text-xs font-medium"
-                style={{ color: "#fff", backgroundColor: "#8B5CF6" }}
-              >
-                ADA Widget
-              </Link>
-            </li>
+            {actor.isPlatformOwner && (
+              <li>
+                <Link
+                  href="/back-office/site-settings/integrations/ada-widget"
+                  className="block rounded-md px-3 py-1.5 text-xs font-medium"
+                  style={{ color: "#fff", backgroundColor: "#8B5CF6" }}
+                >
+                  ADA Widget
+                </Link>
+              </li>
+            )}
           </ul>
         </nav>
       </header>
 
-      {/* ── Content ───────────────────────────────────────────── */}
       <main
         className="flex-1 min-h-screen pt-24 lg:pt-0 lg:ml-52 outline-none"
         tabIndex={-1}
