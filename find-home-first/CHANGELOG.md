@@ -2,23 +2,45 @@
 
 ## [Unreleased]
 
-### Billing support controls - 2026-09-03
+## [1.0.0] - 2026-09-03
 
-- Added a support-only Billing Support console for platform-owner and explicitly authorized support staff.
-- Added full and partial Stripe refunds against real customer charges, with a required confirmation step and support reason/note capture.
-- Added optional immediate subscription cancellation as part of the same support action while keeping refund and cancellation as separate operations.
-- Added server-side verification that the selected Stripe charge belongs to the selected Find Home First organization before any refund is issued.
-- Added audit-log events for successful refunds, blocked refund attempts, failed refunds, support cancellations, and cancellation failures.
-- Customer-facing pages do not expose refund controls; customers may request refunds through support channels, while execution remains restricted to authorized staff.
+### Production release
 
-### Stripe billing rollout - 2026-09-02
+- Promoted Find Home First to its first production-ready release after live acceptance of authentication, billing, Back Office, refund, cancellation, and application-return workflows.
+- Locked application package version at `1.0.0` and recorded the production acceptance evidence in `docs/releases/v1.0.0-production-acceptance.md`.
+- Production no longer presents the normal application as a demonstration environment.
 
-- Added live monthly Stripe subscription plans for Find Home First Tier 1 and Tier 2.
+### Authentication and owner access
+
+- Completed Clerk Production configuration for the live Find Home First domain.
+- Verified live Google sign-in end to end using the production Clerk connection and a dedicated Google OAuth Web application client.
+- Verified the production platform-owner identity and owner-only Back Office access.
+- Added a permanent production-authentication release gate covering Clerk production credentials, social-provider callback registration, production owner identity, owner-only Back Office access, and normal-user access.
+- Added the reusable `docs/production-auth-release-checklist.md` release checklist.
+
+### Billing and support controls
+
+- Added live monthly Stripe subscriptions for Find Home First Tier 1 and Tier 2.
 - Added organization-level billing persistence, subscription access gating, Stripe Checkout, and signed webhook processing for subscription lifecycle events.
-- Added a protected Stripe Customer Portal flow so organization owners can manage billing from the Plan & Billing page.
-- Added Stripe billing environment-variable documentation without storing production secrets in the repository.
-- Created the live Find Home First Stripe webhook endpoint registration for `https://www.findhomefirst.com/api/stripe/webhook`.
-- Production acceptance still requires Railway to hold the matching Stripe secret key and webhook signing secret, plus an end-to-end paid subscription test.
+- Added a protected Stripe Customer Portal flow so organization owners can manage billing from Plan & Billing.
+- Added a support-only Billing Support console for the platform owner and explicitly authorized support staff.
+- Added full and partial Stripe refunds with confirmation, support reason/note capture, charge-to-organization ownership verification, and audit logging.
+- Added optional immediate subscription cancellation as part of the authorized support workflow while preserving customer self-cancellation through Stripe.
+- Verified a live $1 acceptance purchase activated Tier 1 through the Stripe webhook.
+- Verified Back Office Billing Support issued the full $1 refund, reduced the remaining refundable amount to $0.00, and canceled the related test subscription.
+
+### Back Office and operations
+
+- Consolidated billing support inside Back Office.
+- Added a prominent **Return to App** control on desktop and mobile Back Office layouts.
+- Preserved owner-only administrative navigation while allowing explicitly authorized billing-support staff access only to Billing Support.
+- Refund and cancellation operations are recorded through the Find Home First audit workflow.
+
+### Release quality
+
+- Production auth, owner access, live billing activation, refund, cancellation, and Back Office navigation were accepted in production before the v1.0.0 scope lock.
+- TypeScript, lint, full tests, Drizzle schema validation, diff checks, and production Next.js builds remained required merge gates throughout the release.
+- New feature work is intentionally deferred to a subsequent version; v1.0.0 is scope-locked as the first completed production release.
 
 ## [0.3.0] - 2026-08-22
 
