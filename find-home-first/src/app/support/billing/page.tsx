@@ -11,6 +11,8 @@ import { requireBillingSupport } from "@/lib/support-auth";
 export const metadata: Metadata = { title: "Billing Support — Find Home First" };
 export const dynamic = "force-dynamic";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 interface SupportBillingPageProps {
   searchParams: Promise<{ org?: string; result?: string }>;
 }
@@ -50,7 +52,8 @@ export default async function SupportBillingPage({ searchParams }: SupportBillin
   const actor = await requireBillingSupport();
   const params = await searchParams;
   const organizations = await listSupportBillingOrganizations();
-  const selectedId = params.org?.trim() ?? "";
+  const requestedId = params.org?.trim() ?? "";
+  const selectedId = UUID_RE.test(requestedId) ? requestedId : "";
   const selected = selectedId
     ? await getSupportBillingOrganization(selectedId)
     : null;
