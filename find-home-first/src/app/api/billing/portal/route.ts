@@ -8,19 +8,35 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function planUrl(request: NextRequest, billing: string): URL {
-  const url = new URL("/plan", request.url);
-  url.searchParams.set("billing", billing);
-  return url;
-}
+const PRODUCTION_ORIGIN = "https://www.findhomefirst.com";
 
 function publicOrigin(request: NextRequest): string {
+  const configuredOrigin = process.env.APP_URL?.trim();
+  if (configuredOrigin) {
+    try {
+      return new URL(configuredOrigin).origin;
+    } catch {
+      // Fall through to the canonical production origin or request origin.
+    }
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return PRODUCTION_ORIGIN;
+  }
+
   const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
   const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
   if (forwardedHost) {
     return `${forwardedProto || "https"}://${forwardedHost}`;
   }
+
   return request.nextUrl.origin;
+}
+
+function planUrl(request: NextRequest, billing: string): URL {
+  const url = new URL("/plan", publicOrigin(request));
+  url.searchParams.set("billing", billing);
+  return url;
 }
 
 export async function POST(request: NextRequest) {
