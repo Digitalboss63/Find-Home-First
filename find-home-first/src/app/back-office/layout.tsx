@@ -19,6 +19,7 @@ const NAV = [
   { href: "/back-office/organizations", label: "Organizations" },
   { href: "/back-office/users", label: "Users" },
   { href: "/back-office/plans", label: "Plans" },
+  { href: "/support/billing", label: "Billing Support" },
   { href: "/back-office/site-settings", label: "Site Settings" },
   { href: "/back-office/site-settings/integrations", label: "  Integrations", indent: true },
   { href: "/back-office/site-settings/integrations/ada-widget", label: "    ADA Widget", indent: true },
