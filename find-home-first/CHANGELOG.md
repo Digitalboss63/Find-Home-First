@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Stripe billing rollout - 2026-09-02
+
+- Added live monthly Stripe subscription plans for Find Home First Tier 1 and Tier 2.
+- Added organization-level billing persistence, subscription access gating, Stripe Checkout, and signed webhook processing for subscription lifecycle events.
+- Added a protected Stripe Customer Portal flow so organization owners can manage billing from the Plan & Billing page.
+- Added Stripe billing environment-variable documentation without storing production secrets in the repository.
+- Created the live Find Home First Stripe webhook endpoint registration for `https://www.findhomefirst.com/api/stripe/webhook`.
+- Production acceptance still requires Railway to hold the matching Stripe secret key and webhook signing secret, plus an end-to-end paid subscription test.
+
 ## [0.3.0] - 2026-08-22
 
 ### Added
