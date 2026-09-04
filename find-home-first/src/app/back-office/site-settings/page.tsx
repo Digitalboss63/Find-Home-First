@@ -19,6 +19,16 @@ export default async function SiteSettingsPage() {
       <ul className="space-y-2">
         <li>
           <Link
+            href="/back-office/site-settings/training-videos"
+            className="flex items-center justify-between rounded-xl px-5 py-4 text-sm font-semibold"
+            style={{ backgroundColor: "#fff", border: "1px solid var(--color-border)", color: "var(--color-primary)" }}
+          >
+            Training Videos
+            <span aria-hidden="true" style={{ color: "var(--color-secondary)" }}>→</span>
+          </Link>
+        </li>
+        <li>
+          <Link
             href="/back-office/site-settings/integrations"
             className="flex items-center justify-between rounded-xl px-5 py-4 text-sm font-semibold"
             style={{ backgroundColor: "#fff", border: "1px solid var(--color-border)", color: "var(--color-primary)" }}
