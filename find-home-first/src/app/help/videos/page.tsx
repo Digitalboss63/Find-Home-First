@@ -6,6 +6,8 @@ export const metadata: Metadata = {
   description: "Find Home First task-focused training videos and recording checklist.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default function TrainingVideosPage() {
   return <TrainingVideoLibrary />;
 }
