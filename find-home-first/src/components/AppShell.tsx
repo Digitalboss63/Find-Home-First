@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import UserMenu from "@/components/UserMenu";
+import FhfGuide from "@/components/FhfGuide";
 
 const LAST_PROJECT_STORAGE_KEY = "find-home-first:last-project-id";
 
@@ -15,6 +16,7 @@ const NAV_ITEMS = [
   { href: "/housing-search", label: "Find Properties", icon: SearchIcon },
   { href: "/people", label: "People & Contacts", icon: PeopleIcon },
   { href: "/tasks", label: "Tasks", icon: TasksIcon },
+  { href: "/help", label: "Help Center", icon: HelpIcon },
   { href: "/plan", label: "Plan & Billing", icon: PlanIcon },
 ];
 
@@ -62,6 +64,16 @@ function TasksIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M9 11l3 3L22 4" />
       <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+    </svg>
+  );
+}
+
+function HelpIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.8 9a2.35 2.35 0 014.55.75c0 1.75-2.35 2-2.35 3.75" />
+      <path d="M12 17h.01" />
     </svg>
   );
 }
@@ -326,6 +338,8 @@ export default function AppShell({
           © {new Date().getFullYear()} Find Home First. Demonstration environment — all data is fictional.
         </footer>
       </div>
+
+      <FhfGuide />
 
       {/* ══ Mobile overlay ═══════════════════════════════════════════ */}
       {drawerOpen && (
