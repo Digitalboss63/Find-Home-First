@@ -25,9 +25,9 @@ export async function saveTrainingVideosAction(
     return { ok: false, error: "Invalid training video data." };
   }
 
-  const knownTopicIds = new Set(HELP_TOPICS.map((topic) => topic.id));
   const cleaned: TrainingVideoMap = {};
 
+  // Only canonical help-topic IDs are persisted. Unknown input keys are ignored.
   for (const topic of HELP_TOPICS) {
     const rawValue = values[topic.id];
     if (typeof rawValue !== "string" || !rawValue.trim()) continue;
@@ -41,11 +41,6 @@ export async function saveTrainingVideosAction(
     }
 
     cleaned[topic.id] = normalized;
-  }
-
-  // Ignore unknown keys instead of allowing arbitrary platform-setting content.
-  for (const key of Object.keys(values)) {
-    if (!knownTopicIds.has(key)) continue;
   }
 
   const ok = await upsertPlatformSetting(
