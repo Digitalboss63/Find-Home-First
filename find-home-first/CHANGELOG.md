@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### In-app guidance and knowledge system
+
+- Added a shared Find Home First knowledge repository covering getting started, projects/statuses, market intelligence, Opportunity Score, FMR, property search/economics, landlord outreach, referral contacts, prospective residents, tasks, and plan/billing guidance.
+- Added a searchable **Help Center** to the operator navigation with expandable instructions, required information, common mistakes, next actions, and per-topic video slots.
+- Added **FHF Guide**, a context-aware help panel available throughout the operator app. It recognizes the current route, suggests relevant topics, searches the shared knowledge repository, and links users directly to the applicable workflow screen.
+- Prepared every help topic for future training-video URLs so one knowledge record can power the Help Center, FHF Guide, and video access without duplicated content.
+- Kept FHF Guide deterministic for this first release; project-aware AI reasoning and guided “Show Me” interaction remain follow-on work after this knowledge foundation is accepted.
+
 ## [1.0.0] - 2026-09-03
 
 ### Production release
