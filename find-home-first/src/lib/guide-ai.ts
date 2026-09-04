@@ -10,7 +10,6 @@ export interface AiSafeGuideContext {
   nextAction: {
     label: string;
     reason: string;
-    href: string;
   };
   savedPropertyCount: number;
   openTaskCount: number;
@@ -42,7 +41,6 @@ export function buildAiSafeGuideContext(
     nextAction: {
       label: context.nextAction.label,
       reason: context.nextAction.reason,
-      href: context.nextAction.href,
     },
     savedPropertyCount: context.savedPropertyCount,
     openTaskCount: context.openTasks.length,
