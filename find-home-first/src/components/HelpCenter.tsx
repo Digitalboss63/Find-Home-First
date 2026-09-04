@@ -9,6 +9,10 @@ import {
   type HelpCategory,
   type HelpTopic,
 } from "@/lib/help-knowledge";
+import {
+  applyTrainingVideoUrls,
+  type TrainingVideoMap,
+} from "@/lib/training-videos";
 
 function TopicCard({ topic }: { topic: HelpTopic }) {
   return (
@@ -102,16 +106,17 @@ function TopicCard({ topic }: { topic: HelpTopic }) {
   );
 }
 
-export default function HelpCenter() {
+export default function HelpCenter({ videoUrls }: { videoUrls: TrainingVideoMap }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<HelpCategory | "All">("All");
 
   const results = useMemo(() => {
     const searched = query.trim() ? searchHelpTopics(query) : HELP_TOPICS;
+    const withVideos = applyTrainingVideoUrls(searched, videoUrls);
     return category === "All"
-      ? searched
-      : searched.filter((topic) => topic.category === category);
-  }, [query, category]);
+      ? withVideos
+      : withVideos.filter((topic) => topic.category === category);
+  }, [query, category, videoUrls]);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
@@ -162,7 +167,7 @@ export default function HelpCenter() {
         <p className="text-sm text-slate-600">
           {results.length} article{results.length === 1 ? "" : "s"}
         </p>
-        <p className="text-xs text-slate-500">Video links can be added topic-by-topic without changing the Help Center layout.</p>
+        <p className="text-xs text-slate-500">Training links are managed from Back Office and update topic-by-topic.</p>
       </div>
 
       {results.length > 0 ? (
