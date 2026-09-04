@@ -1,13 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import HelpCenter from "@/components/HelpCenter";
+import { getTrainingVideoMap } from "@/lib/training-video-settings";
 
 export const metadata: Metadata = {
   title: "Help Center",
   description: "Find Home First feature guidance, instructions, workflow help, and training videos.",
 };
 
-export default function HelpPage() {
+export const dynamic = "force-dynamic";
+
+export default async function HelpPage() {
+  const videoUrls = await getTrainingVideoMap();
+
   return (
     <>
       <div className="mx-auto w-full max-w-6xl px-5 pt-7 sm:px-6 lg:px-8 lg:pt-9">
@@ -19,7 +24,7 @@ export default function HelpPage() {
           Training Videos →
         </Link>
       </div>
-      <HelpCenter />
+      <HelpCenter videoUrls={videoUrls} />
     </>
   );
 }
