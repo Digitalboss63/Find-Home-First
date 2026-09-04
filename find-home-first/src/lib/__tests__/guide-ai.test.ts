@@ -54,11 +54,10 @@ const topicFixture: HelpTopic = {
   requiredInfo: [],
   commonMistakes: [],
   nextAction: "Save a qualified property candidate.",
-  relatedTopicIds: [],
   route: "/housing-search",
   routeLabel: "Open Find Properties",
-  videoUrl: null,
   keywords: ["property", "search"],
+  contexts: ["/housing-search"],
 };
 
 describe("FHF Guide AI helpers", () => {
@@ -102,7 +101,10 @@ describe("FHF Guide AI helpers", () => {
         {
           type: "message",
           content: [
-            { type: "output_text", text: "Use Find Properties and save the strongest candidate." },
+            {
+              type: "output_text",
+              text: "Use Find Properties and save the strongest candidate.",
+            },
           ],
         },
       ],
