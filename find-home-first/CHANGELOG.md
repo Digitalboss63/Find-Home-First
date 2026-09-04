@@ -10,8 +10,10 @@
 - Added project-aware guidance backed by the signed-in organization’s actual project data: current stage, recorded blocker, saved-property count, open tasks, missing required information, and the next workflow action.
 - Reused the existing market-research approval validator so FHF Guide reports the same missing research requirements that govern city approval instead of maintaining a second definition of completion.
 - Added direct project questions for **What do I do now?**, **What’s blocking me?**, and **What’s missing?** with direct links to the recommended workflow screen.
-- Prepared every help topic for future training-video URLs so one knowledge record can power the Help Center, FHF Guide, and video access without duplicated content.
-- Kept project guidance deterministic and auditable for this phase; external-LLM reasoning and guided **Show Me** interaction remain follow-on work.
+- Added natural-language **Ask FHF Guide** answers using privacy-minimized workflow context, while keeping the deterministic project workflow authoritative and falling back to built-in guidance when the external AI service is unavailable.
+- Added **Show Me** guidance for internal FHF Guide actions: normal app navigation is followed by a route-aware spotlight and “This is where to continue” callout without automated clicking or workflow-data mutation.
+- Added a **Training Videos** library at `/help/videos`, powered by the same help-topic records. Topics with a `videoUrl` appear as published videos; topics without one automatically form the recording checklist.
+- Kept help articles, FHF Guide, project guidance, Show Me navigation, and training-video status tied to the same knowledge/workflow sources so user guidance does not drift across separate systems.
 
 ## [1.0.0] - 2026-09-03
 
