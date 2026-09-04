@@ -21,6 +21,7 @@ const OWNER_NAV: BackOfficeNavItem[] = [
   { href: "/back-office/plans", label: "Plans" },
   { href: "/back-office/billing", label: "Billing Support" },
   { href: "/back-office/site-settings", label: "Site Settings" },
+  { href: "/back-office/site-settings/training-videos", label: "  Training Videos", indent: true },
   { href: "/back-office/site-settings/integrations", label: "  Integrations", indent: true },
   { href: "/back-office/site-settings/integrations/ada-widget", label: "    ADA Widget", indent: true },
   { href: "/back-office/audit-log", label: "Audit Log" },
@@ -129,15 +130,26 @@ export default async function BackOfficeLayout({
               </li>
             ))}
             {actor.isPlatformOwner && (
-              <li>
-                <Link
-                  href="/back-office/site-settings/integrations/ada-widget"
-                  className="block rounded-md px-3 py-1.5 text-xs font-medium"
-                  style={{ color: "#fff", backgroundColor: "#8B5CF6" }}
-                >
-                  ADA Widget
-                </Link>
-              </li>
+              <>
+                <li>
+                  <Link
+                    href="/back-office/site-settings/training-videos"
+                    className="block rounded-md px-3 py-1.5 text-xs font-medium"
+                    style={{ color: "#fff", backgroundColor: "#0F766E" }}
+                  >
+                    Training Videos
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/back-office/site-settings/integrations/ada-widget"
+                    className="block rounded-md px-3 py-1.5 text-xs font-medium"
+                    style={{ color: "#fff", backgroundColor: "#8B5CF6" }}
+                  >
+                    ADA Widget
+                  </Link>
+                </li>
+              </>
             )}
           </ul>
         </nav>

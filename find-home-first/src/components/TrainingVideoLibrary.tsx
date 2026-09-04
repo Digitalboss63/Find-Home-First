@@ -1,9 +1,15 @@
 import Link from "next/link";
 import { HELP_TOPICS } from "@/lib/help-knowledge";
-import { getTrainingVideoCatalog } from "@/lib/training-videos";
+import { getTrainingVideoMap } from "@/lib/training-video-settings";
+import {
+  applyTrainingVideoUrls,
+  getTrainingVideoCatalog,
+} from "@/lib/training-videos";
 
-export default function TrainingVideoLibrary() {
-  const { available, planned } = getTrainingVideoCatalog(HELP_TOPICS);
+export default async function TrainingVideoLibrary() {
+  const videoUrls = await getTrainingVideoMap();
+  const topics = applyTrainingVideoUrls(HELP_TOPICS, videoUrls);
+  const { available, planned } = getTrainingVideoCatalog(topics);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
@@ -71,7 +77,7 @@ export default function TrainingVideoLibrary() {
           <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white p-6">
             <p className="text-sm font-semibold text-slate-900">No training videos are published yet.</p>
             <p className="mt-1 text-sm leading-6 text-slate-600">
-              The library is ready. Add a video URL to a help topic and it will appear here and in that topic&apos;s help controls.
+              The library is ready. Publish video links from Back Office and they will appear here automatically.
             </p>
           </div>
         )}
@@ -81,7 +87,7 @@ export default function TrainingVideoLibrary() {
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recording checklist</p>
         <h2 id="planned-videos-heading" className="mt-1 text-2xl font-bold text-slate-950">Planned videos</h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Keep these short and task-specific. Once a topic has a video URL, it automatically moves into the published section above.
+          Keep these short and task-specific. Once a topic has a saved video URL, it automatically moves into the published section above.
         </p>
 
         {planned.length > 0 ? (
