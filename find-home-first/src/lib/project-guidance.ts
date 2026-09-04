@@ -42,6 +42,7 @@ export interface GuideResearchSnapshot {
   supplySourceLinks: string | null;
   transportationAccess: string | null;
   locationNotes: string | null;
+  riskFundingUncertainty: boolean;
   riskInsufficientSupply: boolean;
   riskRentTooHigh: boolean;
   riskRegulatoryIssue: boolean;
@@ -98,6 +99,7 @@ function researchMissingItems(research: GuideResearchSnapshot | null | undefined
   };
 
   const riskChecked =
+    research.riskFundingUncertainty ||
     research.riskInsufficientSupply ||
     research.riskRentTooHigh ||
     research.riskRegulatoryIssue ||
