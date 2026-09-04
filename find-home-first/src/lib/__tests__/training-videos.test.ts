@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getTrainingVideoCatalog } from "@/lib/training-videos";
+import {
+  applyTrainingVideoUrls,
+  getTrainingVideoCatalog,
+} from "@/lib/training-videos";
 import type { HelpTopic } from "@/lib/help-knowledge";
 
 function topic(id: string, videoUrl?: string): HelpTopic {
@@ -19,7 +22,7 @@ function topic(id: string, videoUrl?: string): HelpTopic {
 }
 
 describe("training video catalog", () => {
-  it("uses the help topic videoUrl as the single published/planned signal", () => {
+  it("uses the help topic videoUrl as the published/planned signal", () => {
     const catalog = getTrainingVideoCatalog([
       topic("published", "https://video.example/published"),
       topic("planned"),
@@ -39,5 +42,26 @@ describe("training video catalog", () => {
 
     expect(catalog.planned.map((item) => item.id)).toEqual(["one", "three"]);
     expect(catalog.available.map((item) => item.id)).toEqual(["two"]);
+  });
+
+  it("applies managed video URLs by help-topic id without mutating source topics", () => {
+    const source = [topic("one"), topic("two")];
+    const managed = applyTrainingVideoUrls(source, {
+      two: "https://video.example/two",
+    });
+
+    expect(managed[0].videoUrl).toBeUndefined();
+    expect(managed[1].videoUrl).toBe("https://video.example/two");
+    expect(source[1].videoUrl).toBeUndefined();
+  });
+
+  it("treats the managed map as authoritative for video availability", () => {
+    const managed = applyTrainingVideoUrls(
+      [topic("one", "https://old.example/one")],
+      {}
+    );
+
+    expect(managed[0].videoUrl).toBeUndefined();
+    expect(getTrainingVideoCatalog(managed).planned).toHaveLength(1);
   });
 });
