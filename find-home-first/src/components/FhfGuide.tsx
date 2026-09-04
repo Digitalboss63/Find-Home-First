@@ -134,11 +134,6 @@ export default function FhfGuide() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open]);
 
-  useEffect(() => {
-    setSelectedTopic(null);
-    setQuery("");
-  }, [pathname]);
-
   const close = () => {
     setOpen(false);
     setSelectedTopic(null);
@@ -146,6 +141,8 @@ export default function FhfGuide() {
   };
 
   const openGuide = () => {
+    setSelectedTopic(null);
+    setQuery("");
     setOpen(true);
     setTimeout(() => closeButtonRef.current?.focus(), 0);
   };
