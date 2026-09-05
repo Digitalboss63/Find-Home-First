@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import FhfBrand from "@/components/FhfBrand";
 import FhfGuideAI from "@/components/FhfGuideAI";
 import GuideSpotlight from "@/components/GuideSpotlight";
 import { HELP_TOPICS } from "@/lib/help-knowledge";
@@ -40,6 +41,7 @@ export default function FhfGuide() {
 
   return (
     <>
+      <FhfBrand />
       {videosReady && <FhfGuideAI />}
       <GuideSpotlight />
     </>
