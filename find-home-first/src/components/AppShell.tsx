@@ -164,14 +164,45 @@ function NavLinks({
   );
 }
 
+// ─── Logo — shows custom logo when set, falls back to FHF text wordmark ───────
+
+function BrandLogo({
+  logoSrc,
+  className,
+}: {
+  logoSrc?: string | null;
+  className?: string;
+}) {
+  if (logoSrc) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logoSrc}
+        alt="Find Home First"
+        className={className ?? "h-8 w-auto max-w-[148px] object-contain object-left"}
+        draggable={false}
+      />
+    );
+  }
+  return (
+    <>
+      <span className="text-white font-bold text-[17px] leading-tight tracking-tight group-hover:text-white/90 transition-colors">
+        Find Home First
+      </span>
+    </>
+  );
+}
+
 // ─── AppShell ─────────────────────────────────────────────────────────────────
 
 export default function AppShell({
   children,
   showBackOffice = false,
+  logoSrc,
 }: {
   children: React.ReactNode;
   showBackOffice?: boolean;
+  logoSrc?: string | null;
 }) {
   const pathname = usePathname();
   const inBackOffice = pathname.startsWith("/back-office");
@@ -257,16 +288,16 @@ export default function AppShell({
             aria-label="Find Home First — go to home workspace"
             className="block group"
           >
-            <span className="text-white font-bold text-[17px] leading-tight tracking-tight group-hover:text-white/90 transition-colors">
-              Find Home First
-            </span>
+            <BrandLogo logoSrc={logoSrc} className="h-8 w-auto max-w-[148px] object-contain object-left" />
           </Link>
-          <p
-            className="text-[11px] mt-1 font-medium tracking-widest uppercase"
-            style={{ color: "rgba(255,255,255,0.35)" }}
-          >
-            Housing Workspace
-          </p>
+          {!logoSrc && (
+            <p
+              className="text-[11px] mt-1 font-medium tracking-widest uppercase"
+              style={{ color: "rgba(255,255,255,0.35)" }}
+            >
+              Housing Workspace
+            </p>
+          )}
         </header>
 
         <nav aria-label="Primary navigation" className="flex-1">
@@ -298,10 +329,9 @@ export default function AppShell({
         >
           <Link
             href="/"
-            className="font-bold text-white text-base"
             aria-label="Find Home First — go to home workspace"
           >
-            Find Home First
+            <BrandLogo logoSrc={logoSrc} className="h-7 w-auto max-w-[130px] object-contain" />
           </Link>
           <button
             ref={hamburgerRef}
@@ -366,9 +396,7 @@ export default function AppShell({
         aria-hidden={!drawerOpen}
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-2 shrink-0">
-          <span className="font-bold text-white text-[17px]">
-            Find Home First
-          </span>
+          <BrandLogo logoSrc={logoSrc} className="h-7 w-auto max-w-[130px] object-contain" />
           <button
             ref={closeButtonRef}
             onClick={closeDrawer}

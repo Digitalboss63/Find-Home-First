@@ -1,11 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePlatformOwner } from "@/lib/auth";
+import { getPlatformSetting } from "@/lib/repository";
+import LogoManagerClient from "./logo/LogoManagerClient";
 
 export const metadata: Metadata = { title: "Back Office — Site Settings" };
 
 export default async function SiteSettingsPage() {
   await requirePlatformOwner();
+  const setting = await getPlatformSetting("site_logo").catch(() => null);
+  // Pass the endpoint URL, not the raw bytes — keeps the page payload compact.
+  const currentLogoSrc = setting?.enabled && setting.value ? "/api/site-logo" : null;
+
   return (
     <div className="max-w-2xl mx-auto px-6 py-8 lg:px-10">
       <div className="mb-8">
@@ -16,6 +22,19 @@ export default async function SiteSettingsPage() {
           Platform-level configuration.
         </p>
       </div>
+
+      {/* ── Logo Upload ─────────────────────────────────────────── */}
+      <div className="mb-8 rounded-xl p-6" style={{ backgroundColor: "#fff", border: "1px solid var(--color-border)" }}>
+        <h2 className="text-base font-semibold mb-1" style={{ color: "var(--color-primary)" }}>
+          Site Logo
+        </h2>
+        <p className="text-xs mb-5" style={{ color: "var(--color-text)", opacity: 0.55 }}>
+          Upload a custom logo (PNG, JPEG, SVG, WebP — max 2 MB). Restoring default returns to the built-in FHF logo.
+        </p>
+        <LogoManagerClient currentLogoSrc={currentLogoSrc} />
+      </div>
+
+      {/* ── Other settings ──────────────────────────────────────── */}
       <ul className="space-y-2">
         <li>
           <Link

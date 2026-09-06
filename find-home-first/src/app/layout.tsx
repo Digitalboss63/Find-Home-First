@@ -34,16 +34,19 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // ── ADA widget ───────────────────────────────────────────────────────────────
-  // Read once per request at the root layout. Injected into <body> end via
-  // AdaWidgetInjector when enabled and non-empty.
-  // Only the platform owner can enable/change this via Back Office.
-  const [adaSetting, platformOwner] = await Promise.all([
+  // ── ADA widget + logo ────────────────────────────────────────────────────────
+  // Read once per request at the root layout.
+  // Only the platform owner can enable/change these via Back Office.
+  const [adaSetting, platformOwner, logoSetting] = await Promise.all([
     getPlatformSetting("ada_widget").catch(() => null),
     isPlatformOwner(),
+    getPlatformSetting("site_logo").catch(() => null),
   ]);
   const adaCode =
     adaSetting?.enabled && adaSetting.value ? adaSetting.value.trim() : null;
+  // Pass only a compact URL — never the raw image bytes — to AppShell.
+  // The actual image is served by GET /api/site-logo with correct caching headers.
+  const logoSrc = logoSetting?.enabled && logoSetting.value ? "/api/site-logo" : null;
   const production = process.env.NODE_ENV === "production";
 
   return (
@@ -54,7 +57,7 @@ export default async function RootLayout({
         )}
         <ClerkProvider>
           <SkipLink />
-          <AppShell showBackOffice={platformOwner}>
+          <AppShell showBackOffice={platformOwner} logoSrc={logoSrc}>
             <Suspense fallback={null}>
               <RouteBackButton />
             </Suspense>
