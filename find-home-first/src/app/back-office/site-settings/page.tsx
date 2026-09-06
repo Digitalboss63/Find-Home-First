@@ -9,7 +9,8 @@ export const metadata: Metadata = { title: "Back Office — Site Settings" };
 export default async function SiteSettingsPage() {
   await requirePlatformOwner();
   const setting = await getPlatformSetting("site_logo").catch(() => null);
-  const currentLogoSrc = setting?.enabled && setting.value ? setting.value : null;
+  // Pass the endpoint URL, not the raw bytes — keeps the page payload compact.
+  const currentLogoSrc = setting?.enabled && setting.value ? "/api/site-logo" : null;
 
   return (
     <div className="max-w-2xl mx-auto px-6 py-8 lg:px-10">

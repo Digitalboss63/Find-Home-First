@@ -44,8 +44,9 @@ export default async function RootLayout({
   ]);
   const adaCode =
     adaSetting?.enabled && adaSetting.value ? adaSetting.value.trim() : null;
-  const logoSrc =
-    logoSetting?.enabled && logoSetting.value ? logoSetting.value : null;
+  // Pass only a compact URL — never the raw image bytes — to AppShell.
+  // The actual image is served by GET /api/site-logo with correct caching headers.
+  const logoSrc = logoSetting?.enabled && logoSetting.value ? "/api/site-logo" : null;
   const production = process.env.NODE_ENV === "production";
 
   return (
