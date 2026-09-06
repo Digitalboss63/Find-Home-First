@@ -21,7 +21,6 @@ const OWNER_NAV: BackOfficeNavItem[] = [
   { href: "/back-office/plans", label: "Plans" },
   { href: "/back-office/billing", label: "Billing Support" },
   { href: "/back-office/site-settings", label: "Site Settings" },
-  { href: "/back-office/site-settings/logo", label: "  Logo Manager", indent: true },
   { href: "/back-office/site-settings/training-videos", label: "  Training Videos", indent: true },
   { href: "/back-office/site-settings/integrations", label: "  Integrations", indent: true },
   { href: "/back-office/site-settings/integrations/ada-widget", label: "    ADA Widget", indent: true },
@@ -132,15 +131,6 @@ export default async function BackOfficeLayout({
             ))}
             {actor.isPlatformOwner && (
               <>
-                <li>
-                  <Link
-                    href="/back-office/site-settings/logo"
-                    className="block rounded-md px-3 py-1.5 text-xs font-medium"
-                    style={{ color: "#fff", backgroundColor: "#EA580C" }}
-                  >
-                    Logo Manager
-                  </Link>
-                </li>
                 <li>
                   <Link
                     href="/back-office/site-settings/training-videos"
