@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import UserMenu from "@/components/UserMenu";
+import FhfGuide from "@/components/FhfGuide";
+
+const LAST_PROJECT_STORAGE_KEY = "find-home-first:last-project-id";
 
 // ─── Navigation items ─────────────────────────────────────────────────────────
 
@@ -13,6 +16,7 @@ const NAV_ITEMS = [
   { href: "/housing-search", label: "Find Properties", icon: SearchIcon },
   { href: "/people", label: "People & Contacts", icon: PeopleIcon },
   { href: "/tasks", label: "Tasks", icon: TasksIcon },
+  { href: "/help", label: "Help Center", icon: HelpIcon },
   { href: "/plan", label: "Plan & Billing", icon: PlanIcon },
 ];
 
@@ -64,11 +68,30 @@ function TasksIcon({ className }: { className?: string }) {
   );
 }
 
+function HelpIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.8 9a2.35 2.35 0 014.55.75c0 1.75-2.35 2-2.35 3.75" />
+      <path d="M12 17h.01" />
+    </svg>
+  );
+}
+
 function PlanIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
       <line x1="1" y1="10" x2="23" y2="10" />
+    </svg>
+  );
+}
+
+function BackOfficeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3l8 4v5c0 5-3.4 8.3-8 9-4.6-.7-8-4-8-9V7l8-4z" />
+      <path d="M9 12l2 2 4-4" />
     </svg>
   );
 }
@@ -97,18 +120,30 @@ function XIcon({ className }: { className?: string }) {
 function NavLinks({
   isActive,
   onNavigate,
+  showBackOffice,
+  findPropertiesHref,
 }: {
   isActive: (href: string) => boolean;
   onNavigate?: () => void;
+  showBackOffice: boolean;
+  findPropertiesHref: string;
 }) {
+  const items = showBackOffice
+    ? [
+        ...NAV_ITEMS,
+        { href: "/back-office", label: "Back Office", icon: BackOfficeIcon },
+      ]
+    : NAV_ITEMS;
+
   return (
     <ul className="mt-3 space-y-0.5 px-2">
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+      {items.map(({ href, label, icon: Icon }) => {
         const active = isActive(href);
+        const resolvedHref = href === "/housing-search" ? findPropertiesHref : href;
         return (
           <li key={href}>
             <Link
-              href={href}
+              href={resolvedHref}
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               className={[
@@ -129,19 +164,58 @@ function NavLinks({
   );
 }
 
+// ─── Logo — shows custom logo when set, falls back to FHF text wordmark ───────
+
+function BrandLogo({
+  logoSrc,
+  className,
+}: {
+  logoSrc?: string | null;
+  className?: string;
+}) {
+  if (logoSrc) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logoSrc}
+        alt="Find Home First"
+        className={className ?? "h-8 w-auto max-w-[148px] object-contain object-left"}
+        draggable={false}
+      />
+    );
+  }
+  return (
+    <>
+      <span className="text-white font-bold text-[17px] leading-tight tracking-tight group-hover:text-white/90 transition-colors">
+        Find Home First
+      </span>
+    </>
+  );
+}
+
 // ─── AppShell ─────────────────────────────────────────────────────────────────
 
 export default function AppShell({
   children,
+  showBackOffice = false,
   logoSrc,
 }: {
   children: React.ReactNode;
+  showBackOffice?: boolean;
   logoSrc?: string | null;
 }) {
   const pathname = usePathname();
+  const inBackOffice = pathname.startsWith("/back-office");
+  const projectFromPath = pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null;
+  const [lastProjectId, setLastProjectId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  const activeProjectId = projectFromPath ?? lastProjectId;
+  const findPropertiesHref = activeProjectId
+    ? `/housing-search?project=${encodeURIComponent(activeProjectId)}`
+    : "/housing-search";
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -155,6 +229,28 @@ export default function AppShell({
     setDrawerOpen(false);
     setTimeout(() => hamburgerRef.current?.focus(), 60);
   };
+
+  // Remember the current project so normal sidebar navigation back to
+  // Find Properties reopens that project's saved search instead of a generic
+  // project-less route. The saved city/state/ZIP still belong to the draft and
+  // only change when the user edits them or explicitly selects a ranked ZIP.
+  useEffect(() => {
+    let projectId = projectFromPath;
+
+    if (pathname.startsWith("/housing-search")) {
+      const queryProject = new URLSearchParams(window.location.search).get("project");
+      if (queryProject) projectId = queryProject;
+    }
+
+    if (projectId) {
+      window.sessionStorage.setItem(LAST_PROJECT_STORAGE_KEY, projectId);
+      setLastProjectId(projectId);
+      return;
+    }
+
+    const storedProjectId = window.sessionStorage.getItem(LAST_PROJECT_STORAGE_KEY);
+    if (storedProjectId) setLastProjectId(storedProjectId);
+  }, [pathname, projectFromPath]);
 
   // Escape key closes drawer
   useEffect(() => {
@@ -174,6 +270,10 @@ export default function AppShell({
     };
   }, [drawerOpen]);
 
+  // Back Office owns its platform-owner shell. Avoid nesting the operator
+  // sidebar and footer around it while preserving the shared root providers.
+  if (inBackOffice) return <>{children}</>;
+
   return (
     <div className="flex min-h-screen">
       {/* ══ Desktop sidebar ══════════════════════════════════════════ */}
@@ -188,18 +288,24 @@ export default function AppShell({
             aria-label="Find Home First — go to home workspace"
             className="block group"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={logoSrc ?? "/images/fhf-logo-default.svg"}
-              alt="Find Home First"
-              className="h-8 w-auto max-w-[148px] object-contain object-left"
-              draggable={false}
-            />
+            <BrandLogo logoSrc={logoSrc} className="h-8 w-auto max-w-[148px] object-contain object-left" />
           </Link>
+          {!logoSrc && (
+            <p
+              className="text-[11px] mt-1 font-medium tracking-widest uppercase"
+              style={{ color: "rgba(255,255,255,0.35)" }}
+            >
+              Housing Workspace
+            </p>
+          )}
         </header>
 
         <nav aria-label="Primary navigation" className="flex-1">
-          <NavLinks isActive={isActive} />
+          <NavLinks
+            isActive={isActive}
+            showBackOffice={showBackOffice}
+            findPropertiesHref={findPropertiesHref}
+          />
         </nav>
 
         {/* Sidebar bottom */}
@@ -221,14 +327,11 @@ export default function AppShell({
             borderColor: "rgba(255,255,255,0.15)",
           }}
         >
-          <Link href="/" aria-label="Find Home First — go to home workspace">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={logoSrc ?? "/images/fhf-logo-default.svg"}
-              alt="Find Home First"
-              className="h-7 w-auto max-w-[130px] object-contain"
-              draggable={false}
-            />
+          <Link
+            href="/"
+            aria-label="Find Home First — go to home workspace"
+          >
+            <BrandLogo logoSrc={logoSrc} className="h-7 w-auto max-w-[130px] object-contain" />
           </Link>
           <button
             ref={hamburgerRef}
@@ -266,6 +369,8 @@ export default function AppShell({
         </footer>
       </div>
 
+      <FhfGuide />
+
       {/* ══ Mobile overlay ═══════════════════════════════════════════ */}
       {drawerOpen && (
         <div
@@ -291,13 +396,7 @@ export default function AppShell({
         aria-hidden={!drawerOpen}
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-2 shrink-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={logoSrc ?? "/images/fhf-logo-default.svg"}
-            alt="Find Home First"
-            className="h-7 w-auto max-w-[130px] object-contain"
-            draggable={false}
-          />
+          <BrandLogo logoSrc={logoSrc} className="h-7 w-auto max-w-[130px] object-contain" />
           <button
             ref={closeButtonRef}
             onClick={closeDrawer}
@@ -311,7 +410,12 @@ export default function AppShell({
           aria-label="Mobile primary navigation"
           className="flex-1 overflow-y-auto"
         >
-          <NavLinks isActive={isActive} onNavigate={closeDrawer} />
+          <NavLinks
+            isActive={isActive}
+            onNavigate={closeDrawer}
+            showBackOffice={showBackOffice}
+            findPropertiesHref={findPropertiesHref}
+          />
         </nav>
         <div
           className="px-5 py-4 shrink-0 border-t"

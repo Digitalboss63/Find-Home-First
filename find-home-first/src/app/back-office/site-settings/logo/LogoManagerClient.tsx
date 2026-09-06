@@ -98,7 +98,7 @@ export default function LogoManagerClient({ currentLogoSrc }: Props) {
     });
   }
 
-  const displaySrc = previewSrc ?? currentLogoSrc ?? "/images/fhf-logo-default.svg";
+  const displaySrc = previewSrc ?? currentLogoSrc ?? "/images/fhf-logo.svg";
   const isDefault = !currentLogoSrc && !previewSrc;
 
   return (
