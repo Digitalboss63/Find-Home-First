@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 48" fill="none">
+  <g>
+    <path d="M10 30 L24 16 L38 30" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M14 26 L14 38 L22 38 L22 32 L26 32 L26 38 L34 38 L34 26" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="24" cy="22" r="1.5" fill="white"/>
+  </g>
+  <text x="48" y="31" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="700" fill="white" letter-spacing="-0.5">Find Home First</text>
+</svg>
