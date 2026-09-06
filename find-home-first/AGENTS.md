@@ -6,6 +6,13 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 # Find Home First engineering protocol
 
+## Execution ownership rule
+
+- Never hand work to OC, Codex, Claude, or another coding agent when the current assistant can complete the task with the tools, repository access, permissions, and execution environment already available.
+- Before recommending an OC handoff, first use the available tools and attempt the work directly when it is within current capability.
+- Use OC only when the required work cannot actually be completed with the current assistant's available tools or permissions, or when the user explicitly asks for OC.
+- If OC is genuinely required, say so immediately and give the user the exact handoff prompt without a long explanation.
+
 ## Protect the working tree
 
 - Start every change with `git status --short --branch` and a targeted `git diff`.
