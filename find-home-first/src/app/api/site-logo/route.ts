@@ -24,7 +24,7 @@ const DEFAULT_LOGO = "/images/fhf-logo.svg";
 export function parseDataUri(
   dataUri: string
 ): { contentType: string; buffer: Buffer } | null {
-  const match = /^data:([^;]+);base64,(.+)$/s.exec(dataUri);
+  const match = /^data:([^;]+);base64,([\s\S]+)$/.exec(dataUri);
   if (!match) return null;
   try {
     return { contentType: match[1], buffer: Buffer.from(match[2], "base64") };
@@ -54,7 +54,12 @@ export async function GET() {
     });
   }
 
-  return new Response(parsed.buffer, {
+  const body = parsed.buffer.buffer.slice(
+    parsed.buffer.byteOffset,
+    parsed.buffer.byteOffset + parsed.buffer.byteLength
+  ) as ArrayBuffer;
+
+  return new Response(body, {
     status: 200,
     headers: {
       "Content-Type": parsed.contentType,
