@@ -44,9 +44,12 @@ export default async function RootLayout({
   ]);
   const adaCode =
     adaSetting?.enabled && adaSetting.value ? adaSetting.value.trim() : null;
-  // Pass only a compact URL — never the raw image bytes — to AppShell.
-  // The actual image is served by GET /api/site-logo with correct caching headers.
-  const logoSrc = logoSetting?.enabled && logoSetting.value ? "/api/site-logo" : null;
+  // Always pass a logo URL to AppShell. Custom uploads are served through
+  // /api/site-logo; otherwise the approved built-in FHF logo is shown.
+  const logoSrc =
+    logoSetting?.enabled && logoSetting.value
+      ? "/api/site-logo"
+      : "/images/fhf-logo.svg";
   const production = process.env.NODE_ENV === "production";
 
   return (
